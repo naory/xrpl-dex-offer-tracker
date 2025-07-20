@@ -1,0 +1,28 @@
+{
+  "name": "server",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "XRPL_NET=mainnet node index.js >> offers.log 2>&1",
+    "mainnet": "PGPORT=5433 XRPL_NET=mainnet node index.js",
+    "test": "jest"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "node-fetch": "^2.7.0",
+    "pg": "^8.11.3",
+    "supertest": "^6.3.3",
+    "xrpl": "^4.3.0"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "nock": "^13.5.6"
+  }
+}

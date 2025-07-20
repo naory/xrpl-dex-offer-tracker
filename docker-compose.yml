@@ -1,0 +1,38 @@
+services:
+  postgres_test:
+    image: postgres:13
+    container_name: postgres_test
+    environment:
+      POSTGRES_USER: xrpl
+      POSTGRES_PASSWORD: xrplpass
+      POSTGRES_DB: xrpl_dex_test
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_test_data:/var/lib/postgresql/data
+
+  server:
+    build: ./server
+    container_name: xrpl_server
+    ports:
+      - "3001:3001"
+    environment:
+      - XRPL_NET=mainnet
+      - PGHOST=postgres_test
+      - PGPORT=5432
+      - PGUSER=xrpl
+      - PGPASSWORD=xrplpass
+      - PGDATABASE=xrpl_dex_test
+      - NODE_ENV=development
+    depends_on:
+      - postgres_test
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3001/offers"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_test_data: 
