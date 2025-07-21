@@ -35,6 +35,267 @@
   box-shadow: 0 8px 25px rgba(59, 130, 246, 0.15);
 }
 
+/* Top Trading Pairs Table Styles */
+.trading-pairs-container {
+  background: rgba(30, 41, 59, 0.4);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(71, 85, 105, 0.3);
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+  transition: all 0.3s ease;
+}
+
+.trading-pairs-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.trading-pairs-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.trading-pairs-title h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: white;
+  margin: 0;
+}
+
+.trading-pairs-title span {
+  font-size: 0.875rem;
+  color: #94a3b8;
+}
+
+.trading-pairs-controls {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.control-group {
+  display: flex;
+  background: rgba(51, 65, 85, 0.5);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.control-button {
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+  color: #94a3b8;
+}
+
+.control-button:hover {
+  color: white;
+}
+
+.control-button.active {
+  background: #3b82f6;
+  color: white;
+}
+
+.control-button.active.purple {
+  background: #9333ea;
+}
+
+/* Trading Pairs Table */
+.trading-pairs-table {
+  width: 100%;
+}
+
+.table-header {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
+  gap: 16px;
+  padding: 12px 16px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.5);
+  margin-bottom: 12px;
+}
+
+.table-rows {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.trading-pair-row {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
+  gap: 16px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 4px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  align-items: center;
+}
+
+.trading-pair-row:hover {
+  background: rgba(71, 85, 105, 0.3);
+}
+
+.pair-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.pair-rank {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: linear-gradient(45deg, #3b82f6, #9333ea);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: white;
+  flex-shrink: 0;
+}
+
+.pair-details h4 {
+  font-weight: 600;
+  color: white;
+  margin: 0;
+  font-size: 0.875rem;
+  transition: color 0.3s ease;
+}
+
+.trading-pair-row:hover .pair-details h4 {
+  color: #60a5fa;
+}
+
+.pair-details .xrp-badge {
+  font-size: 0.75rem;
+  color: #f59e0b;
+}
+
+.price-cell {
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  color: white;
+  font-size: 0.875rem;
+  text-align: right;
+}
+
+.change-cell {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 0.875rem;
+}
+
+.change-positive {
+  color: #10b981;
+}
+
+.change-negative {
+  color: #ef4444;
+}
+
+.volume-cell, .trades-cell {
+  text-align: right;
+}
+
+.volume-cell .main-value, .trades-cell .main-value {
+  color: white;
+  font-family: 'SF Mono', 'Monaco', 'Inconsolata', 'Roboto Mono', monospace;
+  font-size: 0.875rem;
+}
+
+.volume-cell .sub-value, .trades-cell .sub-value {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.bidask-cell {
+  text-align: right;
+}
+
+.bidask-values {
+  font-size: 0.875rem;
+  margin-bottom: 2px;
+}
+
+.bid-value {
+  color: #10b981;
+}
+
+.ask-value {
+  color: #ef4444;
+}
+
+.bidask-ratio {
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+.lastrade-cell {
+  text-align: right;
+}
+
+.lastrade-time {
+  color: #e2e8f0;
+  font-size: 0.875rem;
+  margin-bottom: 2px;
+}
+
+.lastrade-status {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  color: #94a3b8;
+  font-size: 0.75rem;
+}
+
+/* Summary Footer */
+.trading-pairs-summary {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(71, 85, 105, 0.5);
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  text-align: center;
+}
+
+.summary-item .label {
+  font-size: 0.875rem;
+  color: #94a3b8;
+  margin-bottom: 4px;
+}
+
+.summary-item .value {
+  font-size: 1.125rem;
+  font-weight: bold;
+  color: white;
+}
+
+.summary-item .value.orange {
+  color: #f59e0b;
+}
+
+.summary-item .value.blue {
+  color: #60a5fa;
+}
+
 /* Order Book Styles */
 .order-row {
   transition: all 0.3s ease;
@@ -93,34 +354,92 @@
 }
 
 /* Scrollbar Styles */
-.chart-container::-webkit-scrollbar {
+.chart-container::-webkit-scrollbar,
+.scrollbar-thin::-webkit-scrollbar,
+.table-rows::-webkit-scrollbar {
   width: 6px;
+  height: 6px;
 }
 
-.chart-container::-webkit-scrollbar-track {
+.chart-container::-webkit-scrollbar-track,
+.scrollbar-thin::-webkit-scrollbar-track,
+.table-rows::-webkit-scrollbar-track {
   background: rgba(71, 85, 105, 0.1);
   border-radius: 3px;
 }
 
-.chart-container::-webkit-scrollbar-thumb {
+.chart-container::-webkit-scrollbar-thumb,
+.scrollbar-thin::-webkit-scrollbar-thumb,
+.table-rows::-webkit-scrollbar-thumb {
   background: rgba(96, 165, 250, 0.3);
   border-radius: 3px;
 }
 
-.chart-container::-webkit-scrollbar-thumb:hover {
+.chart-container::-webkit-scrollbar-thumb:hover,
+.scrollbar-thin::-webkit-scrollbar-thumb:hover,
+.table-rows::-webkit-scrollbar-thumb:hover {
   background: rgba(96, 165, 250, 0.5);
+}
+
+/* Firefox scrollbar */
+.scrollbar-thin,
+.table-rows {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(96, 165, 250, 0.3) rgba(71, 85, 105, 0.1);
+}
+
+/* Icons */
+.icon {
+  width: 16px;
+  height: 16px;
+  fill: currentColor;
+}
+
+.icon-small {
+  width: 12px;
+  height: 12px;
+  fill: currentColor;
 }
 
 /* Responsive Design */
 @media (max-width: 1280px) {
-  .chart-container {
+  .chart-container,
+  .trading-pairs-container {
     padding: 20px;
+  }
+  
+  .trading-pairs-header {
+    flex-direction: column;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  
+  .table-header,
+  .trading-pair-row {
+    grid-template-columns: 2fr 1fr 1fr 1fr 1fr 1fr 1fr;
+    gap: 8px;
   }
 }
 
 @media (max-width: 768px) {
-  .chart-container {
+  .chart-container,
+  .trading-pairs-container {
     padding: 16px;
+  }
+  
+  .table-header,
+  .trading-pair-row {
+    grid-template-columns: 2fr 1fr 1fr 1fr;
+    gap: 8px;
+  }
+  
+  .table-header .col-5,
+  .table-header .col-6,
+  .table-header .col-7,
+  .trading-pair-row .col-5,
+  .trading-pair-row .col-6,
+  .trading-pair-row .col-7 {
+    display: none;
   }
   
   .order-row {

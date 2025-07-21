@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import Header from './components/Header';
 import StatsCards from './components/StatsCards';
+import TopTradingPairs from './components/TopTradingPairs';
 import OrderBook from './components/OrderBook';
 import MarketDepth from './components/MarketDepth';
 import OfferChart from './components/OfferChart';
@@ -54,13 +55,22 @@ function App() {
         />
         
         <main className="container mx-auto px-4 py-6 space-y-6">
-          {/* Stats Cards Section - Includes Top-k Trades Panel */}
+          {/* Stats Cards Section - Summary Overview */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
           >
             <StatsCards />
+          </motion.div>
+
+          {/* Top Trading Pairs Section - Detailed View */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.1 }}
+          >
+            <TopTradingPairs />
           </motion.div>
 
           {/* Charts Grid */}
