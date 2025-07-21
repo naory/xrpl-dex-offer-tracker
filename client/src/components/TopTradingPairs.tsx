@@ -99,7 +99,7 @@ const TopTradingPairs: React.FC = () => {
       <div className="trading-pairs-container">
         <div className="trading-pairs-header">
           <div className="trading-pairs-title">
-            <BarChart3 className="icon" style={{ color: '#60a5fa' }} />
+            <BarChart3 style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
             <h3>Top Trading Pairs</h3>
           </div>
         </div>
@@ -122,7 +122,7 @@ const TopTradingPairs: React.FC = () => {
       {/* Header */}
       <div className="trading-pairs-header">
         <div className="trading-pairs-title">
-          <BarChart3 className="icon" style={{ color: '#60a5fa' }} />
+          <BarChart3 style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
           <h3>Top Trading Pairs</h3>
           <span>
             ({topPairs?.pairs?.length || 0} pairs, {selectedWindow})
@@ -132,12 +132,12 @@ const TopTradingPairs: React.FC = () => {
         {/* Controls */}
         <div className="trading-pairs-controls">
           {/* Time Window Selector */}
-          <div className="control-group">
+          <div className="btn-group">
             {['10m', '1h', '24h'].map((window) => (
               <button
                 key={window}
                 onClick={() => setSelectedWindow(window as any)}
-                className={`control-button ${selectedWindow === window ? 'active' : ''}`}
+                className={`btn-toggle ${selectedWindow === window ? 'active' : ''}`}
               >
                 {window}
               </button>
@@ -145,12 +145,12 @@ const TopTradingPairs: React.FC = () => {
           </div>
 
           {/* Count Selector */}
-          <div className="control-group">
+          <div className="btn-group">
             {[10, 20, 50].map((count) => (
               <button
                 key={count}
                 onClick={() => setShowCount(count)}
-                className={`control-button ${showCount === count ? 'active purple' : ''}`}
+                className={`btn-toggle ${showCount === count ? 'active purple' : ''}`}
               >
                 {count}
               </button>
@@ -162,18 +162,18 @@ const TopTradingPairs: React.FC = () => {
       {/* Table */}
       <div className="trading-pairs-table">
         {/* Table Header */}
-        <div className="table-header">
+        <div className="trading-pairs-table-header">
           <div>Pair</div>
-          <div style={{ textAlign: 'right' }}>Price</div>
-          <div style={{ textAlign: 'right' }}>24h Change</div>
-          <div style={{ textAlign: 'right' }}>Volume</div>
-          <div style={{ textAlign: 'right' }}>Trades</div>
-          <div style={{ textAlign: 'right' }}>Bid/Ask</div>
-          <div style={{ textAlign: 'right' }}>Last Trade</div>
+          <div className="col-2">Price</div>
+          <div className="col-3">24h Change</div>
+          <div className="col-4">Volume</div>
+          <div className="col-5">Trades</div>
+          <div className="col-6">Bid/Ask</div>
+          <div className="col-7">Last Trade</div>
         </div>
 
         {/* Table Rows */}
-        <div className="table-rows">
+        <div className="trading-pairs-table-body">
           {topPairs?.pairs?.map((pair, index) => {
             const priceChange = calculatePriceChange(pair.priceHistory);
             const isPositive = priceChange.percentage >= 0;
@@ -188,61 +188,89 @@ const TopTradingPairs: React.FC = () => {
                 className="trading-pair-row"
               >
                 {/* Pair Name & Rank */}
-                <div className="pair-info">
-                  <div className="pair-rank">
+                <div className="trading-pair-name">
+                  <div style={{
+                    width: '24px',
+                    height: '24px',
+                    borderRadius: '50%',
+                    background: 'linear-gradient(45deg, #3b82f6, #9333ea)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '12px',
+                    fontWeight: 'bold',
+                    color: 'white',
+                    flexShrink: 0,
+                    marginRight: '12px'
+                  }}>
                     {index + 1}
                   </div>
-                  <div className="pair-details">
-                    <h4>{formatPairName(pair)}</h4>
-                    {pair.isXRPPair && <div className="xrp-badge">XRP</div>}
+                  <div>
+                    <div style={{ fontWeight: '600', color: '#ffffff', fontSize: '14px' }}>
+                      {formatPairName(pair)}
+                    </div>
+                    {pair.isXRPPair && (
+                      <div style={{ fontSize: '12px', color: '#f59e0b' }}>XRP</div>
+                    )}
                   </div>
                 </div>
 
                 {/* Price */}
-                <div className="price-cell">
-                  ${pair.lastPrice.toFixed(6)}
+                <div className="trading-pair-cell price col-2">
+                  {pair.lastPrice.toFixed(6)}
                 </div>
 
                 {/* 24h Change */}
-                <div className={`change-cell ${isPositive ? 'change-positive' : 'change-negative'}`}>
-                  {isPositive ? <TrendingUp className="icon-small" /> : <TrendingDown className="icon-small" />}
-                  <span>
-                    {isPositive ? '+' : ''}{priceChange.percentage.toFixed(2)}%
-                  </span>
+                <div className={`trading-pair-cell col-3 ${isPositive ? 'bid' : 'ask'}`}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
+                    {isPositive ? <TrendingUp style={{ width: '14px', height: '14px' }} /> : <TrendingDown style={{ width: '14px', height: '14px' }} />}
+                    <span>{isPositive ? '+' : ''}{priceChange.percentage.toFixed(2)}%</span>
+                  </div>
                 </div>
 
                 {/* Volume */}
-                <div className="volume-cell">
-                  <div className="main-value">{formatVolume(pair.volume)}</div>
-                  <div className="sub-value">vol</div>
+                <div className="trading-pair-cell volume col-4">
+                  <div>{formatVolume(pair.volume)}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {pair.takerGets.currency}
+                  </div>
                 </div>
 
                 {/* Trades */}
-                <div className="trades-cell">
-                  <div className="main-value">{pair.count}</div>
-                  <div className="sub-value">trades</div>
+                <div className="trading-pair-cell count col-5">
+                  <div>{pair.count}</div>
+                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {pair.bidCount}B/{pair.askCount}A
+                  </div>
                 </div>
 
-                {/* Bid/Ask Ratio */}
-                <div className="bidask-cell">
-                  <div className="bidask-values">
-                    <span className="bid-value">{formatVolume(pair.bidVolume)}</span>
-                    <span style={{ color: '#64748b', margin: '0 4px' }}>/</span>
-                    <span className="ask-value">{formatVolume(pair.askVolume)}</span>
+                {/* Bid/Ask */}
+                <div className="trading-pair-cell col-6">
+                  <div style={{ fontSize: '14px', marginBottom: '2px' }}>
+                    <span className="trading-pair-cell bid">{formatVolume(pair.bidVolume)}</span>
+                    {' / '}
+                    <span className="trading-pair-cell ask">{formatVolume(pair.askVolume)}</span>
                   </div>
-                  <div className="bidask-ratio">
-                    {bidAskRatio.toFixed(1)}:1
+                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>
+                    {bidAskRatio.toFixed(2)}
                   </div>
                 </div>
 
                 {/* Last Trade */}
-                <div className="lastrade-cell">
-                  <div className="lastrade-time">
+                <div className="trading-pair-cell col-7">
+                  <div style={{ color: '#e2e8f0', fontSize: '14px', marginBottom: '2px' }}>
                     {formatTime(pair.lastUpdate)}
                   </div>
-                  <div className="lastrade-status">
-                    <Activity className="icon-small" />
-                    <span>live</span>
+                  <div style={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'flex-end', 
+                    gap: '4px', 
+                    color: '#94a3b8', 
+                    fontSize: '12px' 
+                  }}>
+                    <Activity style={{ width: '12px', height: '12px' }} />
+                    <span>Live</span>
                   </div>
                 </div>
               </motion.div>
@@ -251,35 +279,31 @@ const TopTradingPairs: React.FC = () => {
         </div>
       </div>
 
-      {/* Summary Footer */}
-      {topPairs?.pairs && (
-        <div className="trading-pairs-summary">
-          <div className="summary-item">
-            <div className="label">Total Volume</div>
-            <div className="value">
-              {formatVolume(topPairs.pairs.reduce((sum, pair) => sum + pair.volume, 0))}
-            </div>
-          </div>
-          <div className="summary-item">
-            <div className="label">Total Trades</div>
-            <div className="value">
-              {topPairs.pairs.reduce((sum, pair) => sum + pair.count, 0).toLocaleString()}
-            </div>
-          </div>
-          <div className="summary-item">
-            <div className="label">XRP Pairs</div>
-            <div className="value orange">
-              {topPairs.pairs.filter(pair => pair.isXRPPair).length}
-            </div>
-          </div>
-          <div className="summary-item">
-            <div className="label">Last Update</div>
-            <div className="value blue">
-              {formatTime(topPairs.timestamp)}
-            </div>
+      {/* Summary */}
+      <div className="stats-grid cols-4" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(71, 85, 105, 0.5)' }}>
+        <div className="stat-item">
+          <div className="stat-label">Total Pairs</div>
+          <div className="stat-value">{topPairs?.pairs?.length || 0}</div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-label">XRP Pairs</div>
+          <div className="stat-value" style={{ color: '#f59e0b' }}>
+            {topPairs?.pairs?.filter(p => p.isXRPPair).length || 0}
           </div>
         </div>
-      )}
+        <div className="stat-item">
+          <div className="stat-label">Total Volume</div>
+          <div className="stat-value blue">
+            {formatVolume(topPairs?.pairs?.reduce((sum, pair) => sum + pair.volume, 0) || 0)}
+          </div>
+        </div>
+        <div className="stat-item">
+          <div className="stat-label">Active Trades</div>
+          <div className="stat-value">
+            {topPairs?.pairs?.reduce((sum, pair) => sum + pair.count, 0) || 0}
+          </div>
+        </div>
+      </div>
     </motion.div>
   );
 };
