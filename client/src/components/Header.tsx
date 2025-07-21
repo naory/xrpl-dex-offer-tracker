@@ -11,7 +11,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ selectedPair, onPairChange, isConnected }) => {
   const tradingPairs = [
     'XRP/USDC',
-    'XRP/USD',
+    'XRP/USD', 
     'XRP/EUR',
     'XRP/BTC',
     'USDC/USD',
@@ -21,85 +21,141 @@ const Header: React.FC<HeaderProps> = ({ selectedPair, onPairChange, isConnected
     <motion.header
       initial={{ opacity: 0, y: -20 }}
       animate={{ opacity: 1, y: 0 }}
-      className="bg-slate-800/50 backdrop-blur-lg border-b border-slate-700/50 sticky top-0 z-50"
+      style={{
+        background: 'rgba(30, 41, 59, 0.95)',
+        backdropFilter: 'blur(10px)',
+        borderBottom: '1px solid rgba(71, 85, 105, 0.3)',
+        position: 'sticky',
+        top: 0,
+        zIndex: 50
+      }}
     >
-      <div className="container mx-auto px-4 py-4">
-        <div className="flex items-center justify-between">
-          {/* Logo and Brand */}
+      <div style={{ 
+        maxWidth: '1200px', 
+        margin: '0 auto', 
+        padding: '12px 24px',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between'
+      }}>
+        {/* Logo and Brand */}
+        <motion.div
+          whileHover={{ scale: 1.05 }}
+          style={{ display: 'flex', alignItems: 'center', gap: '12px' }}
+        >
+          <div style={{
+            width: '40px',
+            height: '40px',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #9333ea 100%)',
+            borderRadius: '12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}>
+            <Zap style={{ width: '24px', height: '24px', color: 'white' }} />
+          </div>
+          <div>
+            <h1 style={{
+              fontSize: '20px',
+              fontWeight: 'bold',
+              background: 'linear-gradient(135deg, #60a5fa 0%, #a855f7 100%)',
+              WebkitBackgroundClip: 'text',
+              backgroundClip: 'text',
+              color: 'transparent',
+              margin: 0
+            }}>
+              XRPL DEX
+            </h1>
+            <p style={{ 
+              fontSize: '11px', 
+              color: '#94a3b8', 
+              margin: 0 
+            }}>
+              Offer Tracker
+            </p>
+          </div>
+        </motion.div>
+
+        {/* Trading Pair Selector & Controls */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          {/* Trading Pair Selector */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '13px', color: '#94a3b8', fontWeight: '500' }}>
+              Pair:
+            </span>
+            <div className="btn-group">
+              {tradingPairs.slice(0, 3).map((pair) => (
+                <button
+                  key={pair}
+                  onClick={() => onPairChange(pair)}
+                  className={`btn-toggle btn-toggle-sm ${selectedPair === pair ? 'active' : ''}`}
+                >
+                  {pair}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Connection Status */}
           <motion.div
-            whileHover={{ scale: 1.05 }}
-            className="flex items-center space-x-3"
+            animate={isConnected ? { scale: [1, 1.05, 1] } : {}}
+            transition={{ duration: 2, repeat: Infinity }}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              background: 'rgba(51, 65, 85, 0.4)',
+              border: '1px solid rgba(71, 85, 105, 0.3)',
+              borderRadius: '8px',
+              padding: '6px 12px'
+            }}
           >
-            <div className="w-10 h-10 bg-gradient-to-r from-blue-500 to-purple-600 rounded-xl flex items-center justify-center">
-              <Zap className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold bg-gradient-to-r from-blue-400 to-purple-400 bg-clip-text text-transparent">
-                XRPL DEX
-              </h1>
-              <p className="text-xs text-slate-400">Offer Tracker</p>
-            </div>
+            <div style={{
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: isConnected ? '#10b981' : '#ef4444',
+              boxShadow: isConnected 
+                ? '0 0 8px rgba(16, 185, 129, 0.5)' 
+                : '0 0 8px rgba(239, 68, 68, 0.5)'
+            }}></div>
+            <span style={{ 
+              fontSize: '12px', 
+              color: '#e2e8f0',
+              fontWeight: '500'
+            }}>
+              {isConnected ? 'Live' : 'Connecting...'}
+            </span>
           </motion.div>
 
-          {/* Trading Pair Selector */}
-          <div className="flex items-center space-x-4">
-            <div className="flex items-center space-x-2">
-              <span className="text-sm text-slate-400">Pair:</span>
-              <select
-                value={selectedPair}
-                onChange={(e) => onPairChange(e.target.value)}
-                className="bg-slate-700/50 border border-slate-600/50 rounded-lg px-3 py-2 text-white text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
-              >
-                {tradingPairs.map((pair) => (
-                  <option key={pair} value={pair} className="bg-slate-800">
-                    {pair}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            {/* Connection Status */}
-            <motion.div
-              animate={isConnected ? { scale: [1, 1.1, 1] } : {}}
-              transition={{ duration: 2, repeat: Infinity }}
-              className="flex items-center space-x-2 bg-slate-700/30 rounded-lg px-3 py-2"
+          {/* Action Buttons */}
+          <div className="btn-group">
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="btn-toggle btn-toggle-sm"
+              title="Notifications"
             >
-              <div className={`w-2 h-2 rounded-full ${
-                isConnected 
-                  ? 'bg-green-400 shadow-[0_0_10px_rgba(34,197,94,0.5)]' 
-                  : 'bg-red-400 animate-pulse'
-              }`}></div>
-              <span className="text-sm text-slate-300">
-                {isConnected ? 'Live' : 'Connecting...'}
-              </span>
-            </motion.div>
-
-            {/* Action Buttons */}
-            <div className="flex items-center space-x-2">
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="p-2 rounded-lg bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-white transition-all"
-              >
-                <Bell className="w-4 h-4" />
-              </motion.button>
-              
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="p-2 rounded-lg bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-white transition-all"
-              >
-                <Settings className="w-4 h-4" />
-              </motion.button>
-              
-              <motion.button
-                whileHover={{ scale: 1.1 }}
-                whileTap={{ scale: 0.95 }}
-                className="p-2 rounded-lg bg-slate-700/30 hover:bg-slate-700/50 text-slate-300 hover:text-white transition-all"
-              >
-                <User className="w-4 h-4" />
-              </motion.button>
-            </div>
+              <Bell style={{ width: '14px', height: '14px' }} />
+            </motion.button>
+            
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="btn-toggle btn-toggle-sm"
+              title="Settings"
+            >
+              <Settings style={{ width: '14px', height: '14px' }} />
+            </motion.button>
+            
+            <motion.button
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+              className="btn-toggle btn-toggle-sm"
+              title="Profile"
+            >
+              <User style={{ width: '14px', height: '14px' }} />
+            </motion.button>
           </div>
         </div>
       </div>
