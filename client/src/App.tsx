@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
-import OrderBook from './components/OrderBook';
-import RecentOffers from './components/RecentOffers';
+// import OrderBook from './components/OrderBook';
+// import RecentOffers from './components/RecentOffers';
 
 interface XRPPair {
   rank: number;
@@ -22,6 +22,102 @@ interface XRPPair {
   heatLevel: number;
   lastUpdate: number;
 }
+
+// Simple inline OrderBook component to avoid import issues
+const SimpleOrderBook: React.FC<{ selectedPair: string }> = ({ selectedPair }) => {
+  const [offers, setOffers] = useState<any[]>([]);
+  
+  useEffect(() => {
+    const fetchOffers = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/offers?limit=20');
+        if (response.ok) {
+          const data = await response.json();
+          setOffers(data.slice(0, 10));
+        }
+      } catch (error) {
+        console.error('Error fetching offers:', error);
+      }
+    };
+
+    fetchOffers();
+    const interval = setInterval(fetchOffers, 5000);
+    return () => clearInterval(interval);
+  }, [selectedPair]);
+
+  return (
+    <div className="space-y-4">
+      <div className="text-sm text-slate-400">Order Book for {selectedPair}</div>
+      {offers.length > 0 ? (
+        <div className="space-y-2">
+          {offers.map((offer, index) => (
+            <div key={offer.id} className="flex justify-between text-sm p-2 bg-slate-800/30 rounded">
+              <span className="text-green-400 font-mono">
+                {parseFloat(offer.taker_gets_value).toFixed(4)} {offer.taker_gets_currency}
+              </span>
+              <span className="text-slate-300 font-mono">
+                {parseFloat(offer.price).toFixed(6)}
+              </span>
+              <span className="text-red-400 font-mono">
+                {parseFloat(offer.taker_pays_value).toFixed(4)} {offer.taker_pays_currency}
+              </span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="text-center text-slate-400 py-8">Loading offers...</div>
+      )}
+    </div>
+  );
+};
+
+// Simple inline RecentOffers component
+const SimpleRecentOffers: React.FC<{ selectedPair: string }> = ({ selectedPair }) => {
+  const [offers, setOffers] = useState<any[]>([]);
+  
+  useEffect(() => {
+    const fetchOffers = async () => {
+      try {
+        const response = await fetch('http://localhost:3001/offers?limit=10');
+        if (response.ok) {
+          const data = await response.json();
+          setOffers(data);
+        }
+      } catch (error) {
+        console.error('Error fetching recent offers:', error);
+      }
+    };
+
+    fetchOffers();
+    const interval = setInterval(fetchOffers, 5000);
+    return () => clearInterval(interval);
+  }, [selectedPair]);
+
+  return (
+    <div className="space-y-2">
+      {offers.length > 0 ? (
+        offers.map((offer, index) => (
+          <div key={offer.id} className="text-xs p-2 bg-slate-800/30 rounded space-y-1">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Account:</span>
+              <span className="text-blue-400 font-mono">{offer.account.slice(0, 10)}...</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Pair:</span>
+              <span className="text-white">{offer.taker_gets_currency}/{offer.taker_pays_currency}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Price:</span>
+              <span className="text-green-400 font-mono">{parseFloat(offer.price).toFixed(6)}</span>
+            </div>
+          </div>
+        ))
+      ) : (
+        <div className="text-center text-slate-400 py-4">Loading recent offers...</div>
+      )}
+    </div>
+  );
+};
 
 function App() {
   const [selectedPair, setSelectedPair] = useState<string>('XRP/USDC');
@@ -412,14 +508,14 @@ function App() {
                   )}
                 </select>
               </div>
-              <OrderBook selectedPair={selectedPair} />
+              <SimpleOrderBook selectedPair={selectedPair} />
             </div>
 
             <div className="bg-slate-900/90 backdrop-blur-sm rounded-xl border border-slate-700/50 p-6">
               <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
                 📈 Recent Offers
               </h3>
-              <RecentOffers selectedPair={selectedPair} />
+              <SimpleRecentOffers selectedPair={selectedPair} />
             </div>
           </div>
         </main>
