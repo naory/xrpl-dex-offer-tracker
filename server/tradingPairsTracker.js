@@ -1,5 +1,20 @@
 const { EventEmitter } = require('events');
 
+// Helper to convert XRPL hex currency code to ISO 3-letter code
+function hexToIsoCurrency(hex) {
+  if (!hex || hex === 'XRP') return 'XRP';
+  if (hex.length === 3) return hex; // Already ISO
+  try {
+    const buf = Buffer.from(hex, 'hex');
+    const ascii = buf.toString('ascii').replace(/\0+$/, '');
+    // Allow letters, numbers, and some special characters, length 3-20
+    if (/^[A-Za-z0-9]{3,20}$/.test(ascii)) return ascii;
+    return hex;
+  } catch {
+    return hex;
+  }
+}
+
 class TradingPairsTracker extends EventEmitter {
   constructor() {
     super();
@@ -11,17 +26,15 @@ class TradingPairsTracker extends EventEmitter {
       '24h': 24 * 60 * 60 * 1000
     };
     
-    // In-memory storage for each time window
+    // Storage for trading data by time window
     this.tradingData = {
-      '10m': new Map(), // pairKey -> { volume, count, lastUpdate }
+      '10m': new Map(),
       '1h': new Map(),
       '24h': new Map()
     };
     
-    // Top-k configuration
+    // Configuration
     this.TOP_K = 20;
-    
-    // Cleanup intervals
     this.cleanupIntervals = {};
     
     // Start cleanup processes
@@ -34,7 +47,8 @@ class TradingPairsTracker extends EventEmitter {
   getPairKey(takerGets, takerPays) {
     const normalizeCurrency = (currency) => {
       if (currency === 'XRP') return 'XRP';
-      return currency.toUpperCase();
+      // Convert hex currency codes to human readable strings
+      return hexToIsoCurrency(currency).toUpperCase();
     };
     
     const gets = {
@@ -59,12 +73,34 @@ class TradingPairsTracker extends EventEmitter {
    * Record a trading activity for a pair
    */
   recordTrade(takerGets, takerPays, volume, timestamp = Date.now()) {
-    const pairKey = this.getPairKey(takerGets, takerPays);
+    console.log(`[RECORD TRADE] ${takerGets.currency}/${takerPays.currency}, volume: ${volume}`);
+    // Convert hex currency codes to human readable strings before storing
+    const normalizedTakerGets = {
+      currency: hexToIsoCurrency(takerGets.currency),
+      issuer: takerGets.issuer,
+      value: takerGets.value
+    };
+    
+    const normalizedTakerPays = {
+      currency: hexToIsoCurrency(takerPays.currency),
+      issuer: takerPays.issuer,
+      value: takerPays.value
+    };
+    
+    // Debug logging for hex conversion
+    if (takerGets.currency !== normalizedTakerGets.currency) {
+      console.log(`[HEX CONVERSION] ${takerGets.currency} -> ${normalizedTakerGets.currency}`);
+    }
+    if (takerPays.currency !== normalizedTakerPays.currency) {
+      console.log(`[HEX CONVERSION] ${takerPays.currency} -> ${normalizedTakerPays.currency}`);
+    }
+    
+    const pairKey = this.getPairKey(normalizedTakerGets, normalizedTakerPays);
     
     // Determine if this is an XRP pair and whether it's a bid or ask
-    const isXRPPair = takerGets.currency === 'XRP' || takerPays.currency === 'XRP';
-    const isBid = takerPays.currency === 'XRP'; // Buying XRP (offering other currency for XRP)
-    const isAsk = takerGets.currency === 'XRP'; // Selling XRP (offering XRP for other currency)
+    const isXRPPair = normalizedTakerGets.currency === 'XRP' || normalizedTakerPays.currency === 'XRP';
+    const isBid = normalizedTakerPays.currency === 'XRP'; // Buying XRP (offering other currency for XRP)
+    const isAsk = normalizedTakerGets.currency === 'XRP'; // Selling XRP (offering XRP for other currency)
     
     // Calculate price (always in XRP terms for XRP pairs)
     let price = null;
@@ -84,8 +120,8 @@ class TradingPairsTracker extends EventEmitter {
       
       if (!this.tradingData[window].has(pairKey)) {
         this.tradingData[window].set(pairKey, {
-          takerGets,
-          takerPays,
+          takerGets: normalizedTakerGets,
+          takerPays: normalizedTakerPays,
           volume: 0,
           count: 0,
           lastUpdate: timestamp,

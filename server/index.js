@@ -559,7 +559,8 @@ function hexToIsoCurrency(hex) {
   try {
     const buf = Buffer.from(hex, 'hex');
     const ascii = buf.toString('ascii').replace(/\0+$/, '');
-    if (/^[A-Z0-9]{3,6}$/.test(ascii)) return ascii;
+    // Allow letters, numbers, and some special characters, length 3-20
+    if (/^[A-Za-z0-9]{3,20}$/.test(ascii)) return ascii;
     return hex;
   } catch {
     return hex;
