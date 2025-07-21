@@ -73,7 +73,6 @@ class TradingPairsTracker extends EventEmitter {
    * Record a trading activity for a pair
    */
   recordTrade(takerGets, takerPays, volume, timestamp = Date.now()) {
-    console.log(`[RECORD TRADE] ${takerGets.currency}/${takerPays.currency}, volume: ${volume}`);
     // Convert hex currency codes to human readable strings before storing
     const normalizedTakerGets = {
       currency: hexToIsoCurrency(takerGets.currency),
@@ -86,14 +85,6 @@ class TradingPairsTracker extends EventEmitter {
       issuer: takerPays.issuer,
       value: takerPays.value
     };
-    
-    // Debug logging for hex conversion
-    if (takerGets.currency !== normalizedTakerGets.currency) {
-      console.log(`[HEX CONVERSION] ${takerGets.currency} -> ${normalizedTakerGets.currency}`);
-    }
-    if (takerPays.currency !== normalizedTakerPays.currency) {
-      console.log(`[HEX CONVERSION] ${takerPays.currency} -> ${normalizedTakerPays.currency}`);
-    }
     
     const pairKey = this.getPairKey(normalizedTakerGets, normalizedTakerPays);
     
