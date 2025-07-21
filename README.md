@@ -33,6 +33,132 @@ xrpl-dex-offer-tracker/
   server/   # Backend service (Node.js/Express)
 ```
 
+## 🚀 Future Roadmap
+
+### 🎯 **Priority Features**
+
+#### **1. Layout & Navigation Improvements**
+- [ ] **Multi-panel Dashboard**: Resizable, draggable panel system for customized layouts
+- [ ] **Navigation Sidebar**: Quick access to different views (Markets, Portfolio, Analytics, Settings)
+- [ ] **Tab System**: Multiple trading pair tabs with quick switching
+- [ ] **Workspace Saving**: Save and restore custom dashboard configurations
+- [ ] **Mobile-First Responsive**: Optimized mobile trading interface
+
+#### **2. AMM Pool Integration & Analysis** 
+- [ ] **AMM Pool Discovery**: Auto-detect and track XRPL AMM pools
+- [ ] **Pool vs DEX Comparison**: Side-by-side liquidity analysis (Pool vs Order Book)
+- [ ] **AMM Pool Breakdown**: 
+  - Individual pool performance metrics
+  - LP token tracking and yield analysis
+  - Pool composition and weight changes
+  - Impermanent loss calculations
+- [ ] **Hybrid Routing**: Show best execution paths (DEX vs AMM vs hybrid)
+- [ ] **Pool Health Metrics**: TVL, volume/TVL ratio, fee earnings
+- [ ] **AMM Transaction Feed**: Real-time pool swaps, adds, removes
+
+### 📊 **Advanced Trading Features**
+
+#### **3. Portfolio & Wallet Integration**
+- [ ] **XRPL Wallet Connection**: Connect Xumm, Crossmark, GemWallet
+- [ ] **Portfolio Tracking**: Real-time balance and P&L tracking
+- [ ] **Transaction History**: Complete trading history with P&L analysis
+- [ ] **Asset Allocation**: Visual breakdown of holdings
+- [ ] **Portfolio Performance**: ROI tracking with benchmarks
+
+#### **4. Advanced Analytics & Intelligence**
+- [ ] **Price Alerts**: Custom price, volume, and volatility alerts
+- [ ] **Market Sentiment**: Social sentiment aggregation and analysis
+- [ ] **Liquidity Heatmaps**: Visual liquidity distribution across pairs
+- [ ] **Arbitrage Scanner**: Cross-DEX and DEX-AMM arbitrage opportunities
+- [ ] **Whale Watching**: Large transaction monitoring and alerts
+- [ ] **Market Microstructure**: Bid-ask spread analysis, market impact
+
+#### **5. Professional Trading Tools**
+- [ ] **Advanced Charting**: TradingView-style charts with indicators
+- [ ] **Order Management**: 
+  - Limit orders with time-in-force options
+  - Stop-loss and take-profit automation
+  - Conditional orders and triggers
+- [ ] **Risk Management**: Position sizing, exposure limits, risk metrics
+- [ ] **Backtesting Engine**: Strategy testing with historical data
+- [ ] **API Trading**: REST/WebSocket APIs for algorithmic trading
+
+### 🔍 **Data & Research Features**
+
+#### **6. Market Research & Intelligence**
+- [ ] **Token Research Hub**: 
+  - Fundamental analysis for XRPL tokens
+  - Social media mentions and sentiment
+  - Developer activity and ecosystem updates
+- [ ] **Cross-Chain Comparison**: Compare XRPL prices with other DEXes
+- [ ] **Market Reports**: Automated daily/weekly market summaries
+- [ ] **Correlation Analysis**: Token correlation matrices and insights
+
+#### **7. Historical Data & Analytics**
+- [ ] **Time Machine**: Historical market state reconstruction
+- [ ] **Seasonality Analysis**: Trading pattern analysis over time
+- [ ] **Volume Profile**: Price level volume distribution analysis
+- [ ] **Market Replay**: Step-through historical market events
+- [ ] **Data Export**: CSV/JSON export for external analysis
+
+### ⚡ **Performance & Infrastructure**
+
+#### **8. Real-Time Enhancements**
+- [ ] **WebSocket Streaming**: Real-time price and order book updates
+- [ ] **Low-Latency Mode**: Sub-100ms update optimizations
+- [ ] **Multi-Node Support**: Horizontal scaling with Redis clustering
+- [ ] **CDN Integration**: Global edge caching for market data
+- [ ] **Performance Monitoring**: Real-time system health dashboard
+
+#### **9. User Experience & Accessibility**
+- [ ] **Dark/Light Themes**: Multiple theme options with customization
+- [ ] **Keyboard Shortcuts**: Power user navigation and actions
+- [ ] **Screen Reader Support**: Full accessibility compliance
+- [ ] **Multi-Language**: Internationalization support
+- [ ] **Color-Blind Friendly**: Accessible color schemes and indicators
+
+### 🛡️ **Security & Compliance**
+
+#### **10. Security & Privacy**
+- [ ] **Read-Only Wallet Connection**: View-only wallet integration for safety
+- [ ] **Data Privacy Controls**: GDPR compliance and data export
+- [ ] **Security Alerts**: Suspicious activity monitoring
+- [ ] **Audit Logs**: Complete user action logging
+- [ ] **Rate Limiting**: Anti-abuse and fair usage policies
+
+### 🎨 **Advanced UI/UX**
+
+#### **11. Gamification & Social**
+- [ ] **Trading Competitions**: Leaderboards and challenges
+- [ ] **Achievement System**: Unlock badges for trading milestones
+- [ ] **Social Trading**: Follow successful traders (anonymized)
+- [ ] **Community Features**: Discussion forums and market chat
+- [ ] **Educational Content**: Built-in tutorials and XRPL learning modules
+
+#### **12. Enterprise Features**
+- [ ] **Team Accounts**: Multi-user access with role permissions
+- [ ] **White-Label Solution**: Branded instances for institutions
+- [ ] **API Rate Tiers**: Premium access levels for different users
+- [ ] **Custom Integrations**: Enterprise webhook and API features
+- [ ] **Compliance Reporting**: Automated regulatory reporting tools
+
+### 🔮 **Experimental & Research**
+
+#### **13. AI & Machine Learning**
+- [ ] **Price Prediction Models**: ML-based price forecasting
+- [ ] **Anomaly Detection**: Unusual market activity alerts
+- [ ] **Smart Alerts**: AI-powered personalized notifications
+- [ ] **Pattern Recognition**: Automated technical analysis
+- [ ] **Market Making Assistance**: Optimal spread suggestions
+
+#### **14. Cross-Chain & DeFi**
+- [ ] **Bridge Monitoring**: Track XRPL bridge activities
+- [ ] **Cross-Chain Arbitrage**: Multi-chain opportunity scanning
+- [ ] **DeFi Integration**: Track XRPL DeFi protocols and yields
+- [ ] **Interoperability Analytics**: Cross-chain flow analysis
+
+---
+
 ## Planned Implementation Steps
 
 ### 1. Backend (server/)
@@ -166,8 +292,10 @@ xrpl-dex-offer-tracker/
    ```
 
 6. Start the frontend client:
+   ```bash
+   cd client
+   npm start
    ```
-```
 
 ## Server Startup: Offer Backfill with XRPL HTTP API
 
@@ -311,5 +439,3 @@ GET /trading-pairs/realtime?window=10m&k=3
 ```
 
 **Note:** These endpoints are powered by an in-memory tracker. If you want persistence or distributed state, you can refactor the tracker to use Redis with minimal changes.
-
----
