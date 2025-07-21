@@ -73,18 +73,36 @@ class TradingPairsTracker extends EventEmitter {
    * Record a trading activity for a pair
    */
   recordTrade(takerGets, takerPays, volume, timestamp = Date.now()) {
-    // Convert hex currency codes to human readable strings before storing
-    const normalizedTakerGets = {
-      currency: hexToIsoCurrency(takerGets.currency),
-      issuer: takerGets.issuer,
-      value: takerGets.value
-    };
-    
-    const normalizedTakerPays = {
-      currency: hexToIsoCurrency(takerPays.currency),
-      issuer: takerPays.issuer,
-      value: takerPays.value
-    };
+    try {
+      // Log what we receive
+      console.log(`[TRACKER] Received currencies: ${takerGets.currency} / ${takerPays.currency}`);
+      
+      // Convert hex currency codes to human readable strings before storing
+      const normalizedTakerGets = {
+        currency: hexToIsoCurrency(takerGets.currency),
+        issuer: takerGets.issuer,
+        value: takerGets.value
+      };
+      
+      const normalizedTakerPays = {
+        currency: hexToIsoCurrency(takerPays.currency),
+        issuer: takerPays.issuer,
+        value: takerPays.value
+      };
+      
+      // Log what we converted to
+      if (takerGets.currency !== normalizedTakerGets.currency) {
+        console.log(`[TRACKER] Converted ${takerGets.currency} -> ${normalizedTakerGets.currency}`);
+      }
+      if (takerPays.currency !== normalizedTakerPays.currency) {
+        console.log(`[TRACKER] Converted ${takerPays.currency} -> ${normalizedTakerPays.currency}`);
+      }
+    } catch (error) {
+      console.log(`[TRACKER] Error in recordTrade: ${error.message}`);
+      // Fallback to original data if conversion fails
+      var normalizedTakerGets = takerGets;
+      var normalizedTakerPays = takerPays;
+    }
     
     const pairKey = this.getPairKey(normalizedTakerGets, normalizedTakerPays);
     
