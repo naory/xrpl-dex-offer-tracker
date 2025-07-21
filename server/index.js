@@ -321,36 +321,8 @@ async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = n
       ]
     )
     
-    // Record trade in trading pairs tracker (only for created offers)
-    if (eventType === 'created' && typeof tradingPairsTracker !== 'undefined') {
-      try {
-        const takerGets = {
-          currency: taker_gets_currency,
-          issuer: taker_gets_issuer,
-          value: taker_gets_value
-        };
-        const takerPays = {
-          currency: taker_pays_currency,
-          issuer: taker_pays_issuer,
-          value: taker_pays_value
-        };
-        
-        // Calculate volume in XRP terms for proper ranking
-        let xrpVolume = 0;
-        if (taker_gets_currency === 'XRP') {
-          xrpVolume = parseFloat(taker_gets_value);
-        } else if (taker_pays_currency === 'XRP') {
-          xrpVolume = parseFloat(taker_pays_value);
-        } else {
-          // Non-XRP pair, skip for XRP-focused tracker
-          return;
-        }
-        
-        tradingPairsTracker.recordTrade(takerGets, takerPays, xrpVolume, eventTime.getTime());
-      } catch (err) {
-        console.error('[ERROR] Failed to record trade in trading pairs tracker:', err);
-      }
-    }
+    // Note: Trade volume tracking now happens in the meta.AffectedNodes processing
+    // where we track actual offer fills/consumption, not just creation
 
     // Upsert into offers (for created/modified), delete for cancelled
     if (eventType === 'created' || eventType === 'modified') {
