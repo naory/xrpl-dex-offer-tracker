@@ -338,14 +338,21 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
         {/* Asks */}
         {(viewMode === 'combined' || viewMode === 'asks') && (
           <div className="asks-section">
-            {processedData.asks.slice().reverse().map((ask) => (
-              <OrderRow 
-                key={ask.key}
-                order={ask} 
-                displayPrice={calculateDisplayPrice(ask)}
-                priceCurrency={priceCurrency}
-              />
-            ))}
+            {processedData.asks.length > 0 ? (
+              processedData.asks.slice().reverse().map((ask) => (
+                <OrderRow 
+                  key={ask.key}
+                  order={ask} 
+                  displayPrice={calculateDisplayPrice(ask)}
+                  priceCurrency={priceCurrency}
+                />
+              ))
+            ) : (
+              <div className="text-center py-4 text-slate-400">
+                <div className="text-sm">No ask orders available</div>
+                <div className="text-xs text-slate-500 mt-1">for {selectedPair}</div>
+              </div>
+            )}
           </div>
         )}
 
@@ -377,14 +384,21 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
         {/* Bids */}
         {(viewMode === 'combined' || viewMode === 'bids') && (
           <div className="bids-section">
-            {processedData.bids.map((bid) => (
-              <OrderRow 
-                key={bid.key}
-                order={bid} 
-                displayPrice={calculateDisplayPrice(bid)}
-                priceCurrency={priceCurrency}
-              />
-            ))}
+            {processedData.bids.length > 0 ? (
+              processedData.bids.map((bid) => (
+                <OrderRow 
+                  key={bid.key}
+                  order={bid} 
+                  displayPrice={calculateDisplayPrice(bid)}
+                  priceCurrency={priceCurrency}
+                />
+              ))
+            ) : (
+              <div className="text-center py-4 text-slate-400">
+                <div className="text-sm">No bid orders available</div>
+                <div className="text-xs text-slate-500 mt-1">for {selectedPair}</div>
+              </div>
+            )}
           </div>
         )}
       </div>

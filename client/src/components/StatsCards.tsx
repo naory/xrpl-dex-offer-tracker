@@ -64,7 +64,7 @@ const StatsCards: React.FC = () => {
   const topPairsString = isLoadingTopPairs
     ? '--'
     : (topPairs && topPairs.length > 0
-        ? topPairs.map(p => `${p.takerGets.currency}/${p.takerPays.currency}`).join(', ')
+        ? topPairs.map((p: any) => `${p.takerGets.currency}/${p.takerPays.currency}`).join(', ')
         : '--');
 
   const cardVariants: Variants = {
