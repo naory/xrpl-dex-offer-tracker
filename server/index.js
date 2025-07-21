@@ -6,6 +6,7 @@ const pool = require('./db')
 const createApp = require('./app')
 const fetch = require('node-fetch');
 const fs = require('fs');
+const TradingPairsTracker = require('./tradingPairsTracker');
 
 // Example: USD issuer on XRPL testnet
 const USD_ISSUER = 'rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq'
@@ -83,7 +84,7 @@ async function subscribeToOrderBook(client, taker_gets, taker_pays) {
   }
 }
 
-async function handleTransaction(tx, pool = defaultPool) {
+async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = null) {
   try {
     console.log('[DEBUG] handleTransaction called with tx:', JSON.stringify(tx, (k, v) => (typeof v === 'object' && v !== null ? v : v), 2).slice(0, 2000));
   } catch (err) {
@@ -104,6 +105,8 @@ async function handleTransaction(tx, pool = defaultPool) {
         let offerNode = null
         let eventType = ''
         let offer_id = null
+        let previousFields = null // Track previous state for volume calculation
+        
         if (node.CreatedNode && node.CreatedNode.LedgerEntryType === 'Offer') {
           console.log('[DEBUG] Matched CreatedNode Offer');
           offerNode = node.CreatedNode.NewFields
@@ -112,11 +115,12 @@ async function handleTransaction(tx, pool = defaultPool) {
         } else if (node.ModifiedNode && node.ModifiedNode.LedgerEntryType === 'Offer') {
           console.log('[DEBUG] Matched ModifiedNode Offer');
           offerNode = node.ModifiedNode.FinalFields
+          previousFields = node.ModifiedNode.PreviousFields
           eventType = 'modified'
           offer_id = node.ModifiedNode.LedgerIndex
         } else if (node.DeletedNode && node.DeletedNode.LedgerEntryType === 'Offer') {
           console.log('[DEBUG] Matched DeletedNode Offer');
-          offerNode = node.DeletedNode.FinalFields
+          offerNode = node.DeletedNode.FinalFields || node.DeletedNode.PreviousFields
           eventType = 'cancelled'
           offer_id = node.DeletedNode.LedgerIndex
         // Also handle nodes where the node itself is an Offer (not wrapped)
@@ -128,11 +132,13 @@ async function handleTransaction(tx, pool = defaultPool) {
         } else {
           console.log('[DEBUG] No match for node:', JSON.stringify(node));
         }
+        
         if (offerNode && offer_id) {
           // Parse offer fields
           const account = offerNode.Account || null
           let taker_gets_currency, taker_gets_issuer, taker_gets_value
           let taker_pays_currency, taker_pays_issuer, taker_pays_value
+          
           if (typeof offerNode.TakerGets === 'object') {
             taker_gets_currency = hexToIsoCurrency(offerNode.TakerGets.currency)
             taker_gets_issuer = offerNode.TakerGets.issuer || null
@@ -142,6 +148,7 @@ async function handleTransaction(tx, pool = defaultPool) {
             taker_gets_issuer = null
             taker_gets_value = xrpl.dropsToXrp(offerNode.TakerGets)
           }
+          
           if (typeof offerNode.TakerPays === 'object') {
             taker_pays_currency = hexToIsoCurrency(offerNode.TakerPays.currency)
             taker_pays_issuer = offerNode.TakerPays.issuer || null
@@ -151,8 +158,80 @@ async function handleTransaction(tx, pool = defaultPool) {
             taker_pays_issuer = null
             taker_pays_value = xrpl.dropsToXrp(offerNode.TakerPays)
           }
+          
           const flags = offerNode.Flags || null
           const expiration = offerNode.Expiration || null
+          
+          // Record trade for FILLED/CONSUMED offers (modified or deleted due to trading)
+          if ((eventType === 'modified' || eventType === 'cancelled') && 
+              typeof tradingPairsTracker !== 'undefined' && 
+              previousFields) {
+            try {
+              // Calculate the amount that was consumed/filled
+              let filledXRPVolume = 0;
+              
+              if (eventType === 'modified' && previousFields.TakerGets) {
+                // Offer was partially filled - calculate the difference
+                let prevTakerGets, prevTakerPays;
+                
+                if (typeof previousFields.TakerGets === 'object') {
+                  prevTakerGets = parseFloat(previousFields.TakerGets.value);
+                } else {
+                  prevTakerGets = parseFloat(xrpl.dropsToXrp(previousFields.TakerGets));
+                }
+                
+                if (typeof previousFields.TakerPays === 'object') {
+                  prevTakerPays = parseFloat(previousFields.TakerPays.value);
+                } else {
+                  prevTakerPays = parseFloat(xrpl.dropsToXrp(previousFields.TakerPays));
+                }
+                
+                // Calculate filled amount
+                const currentTakerGets = parseFloat(taker_gets_value);
+                const currentTakerPays = parseFloat(taker_pays_value);
+                
+                const filledTakerGets = prevTakerGets - currentTakerGets;
+                const filledTakerPays = prevTakerPays - currentTakerPays;
+                
+                // Use XRP amount as volume
+                if (taker_gets_currency === 'XRP') {
+                  filledXRPVolume = filledTakerGets;
+                } else if (taker_pays_currency === 'XRP') {
+                  filledXRPVolume = filledTakerPays;
+                }
+              } else if (eventType === 'cancelled') {
+                // Offer was fully consumed - use remaining amounts
+                // (Note: This might be a cancel, not a fill, so check transaction type)
+                if (TransactionType === 'OfferCreate' || TransactionType === 'Payment') {
+                  // Likely a fill, not a manual cancel
+                  if (taker_gets_currency === 'XRP') {
+                    filledXRPVolume = parseFloat(taker_gets_value);
+                  } else if (taker_pays_currency === 'XRP') {
+                    filledXRPVolume = parseFloat(taker_pays_value);
+                  }
+                }
+              }
+              
+              if (filledXRPVolume > 0) {
+                const takerGets = {
+                  currency: taker_gets_currency,
+                  issuer: taker_gets_issuer,
+                  value: taker_gets_value
+                };
+                const takerPays = {
+                  currency: taker_pays_currency,
+                  issuer: taker_pays_issuer,
+                  value: taker_pays_value
+                };
+                
+                console.log(`[TRADE_FILL] Recording ${filledXRPVolume} XRP volume for ${taker_gets_currency}/${taker_pays_currency}`);
+                tradingPairsTracker.recordTrade(takerGets, takerPays, filledXRPVolume, eventTime.getTime());
+              }
+            } catch (err) {
+              console.error('[ERROR] Failed to record trade fill in trading pairs tracker:', err);
+            }
+          }
+          
           // Insert into offer_history
           console.log(`[${new Date().toISOString()}][${eventType.toUpperCase()}][META] Offer ${offer_id} by ${account}: ${taker_gets_value} ${taker_gets_currency} for ${taker_pays_value} ${taker_pays_currency}`)
           await pool.query(
@@ -165,6 +244,7 @@ async function handleTransaction(tx, pool = defaultPool) {
               taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, eventType, eventTime
             ]
           )
+          
           // Upsert into offers (for created/modified), delete for cancelled
           if (eventType === 'created' || eventType === 'modified' || eventType === 'unknown') {
             await pool.query(
@@ -193,8 +273,8 @@ async function handleTransaction(tx, pool = defaultPool) {
             await pool.query('DELETE FROM offers WHERE offer_id = $1', [offer_id])
           }
         }
-      } catch (err) {
-        console.error('[ERROR] Exception in meta node loop:', err);
+      } catch (e) {
+        console.error('[ERROR] Failed to process offer from meta node:', e)
       }
     }
   }
@@ -240,6 +320,37 @@ async function handleTransaction(tx, pool = defaultPool) {
         taker_pays_currency, taker_pays_issuer, taker_pays_value, Flags, Expiration, eventType, eventTime
       ]
     )
+    
+    // Record trade in trading pairs tracker (only for created offers)
+    if (eventType === 'created' && typeof tradingPairsTracker !== 'undefined') {
+      try {
+        const takerGets = {
+          currency: taker_gets_currency,
+          issuer: taker_gets_issuer,
+          value: taker_gets_value
+        };
+        const takerPays = {
+          currency: taker_pays_currency,
+          issuer: taker_pays_issuer,
+          value: taker_pays_value
+        };
+        
+        // Calculate volume in XRP terms for proper ranking
+        let xrpVolume = 0;
+        if (taker_gets_currency === 'XRP') {
+          xrpVolume = parseFloat(taker_gets_value);
+        } else if (taker_pays_currency === 'XRP') {
+          xrpVolume = parseFloat(taker_pays_value);
+        } else {
+          // Non-XRP pair, skip for XRP-focused tracker
+          return;
+        }
+        
+        tradingPairsTracker.recordTrade(takerGets, takerPays, xrpVolume, eventTime.getTime());
+      } catch (err) {
+        console.error('[ERROR] Failed to record trade in trading pairs tracker:', err);
+      }
+    }
 
     // Upsert into offers (for created/modified), delete for cancelled
     if (eventType === 'created' || eventType === 'modified') {
@@ -372,7 +483,7 @@ async function startXRPLClient() {
         if (process.env.LOG_FULL_TX) {
           console.log(`[${new Date().toISOString()}] Full transaction event:`, JSON.stringify(txHuman, null, 2));
         }
-        handleTransaction(tx).catch(console.error)
+        handleTransaction(tx, pool, tradingPairsTracker).catch(console.error)
       })
       client.on('ledgerClosed', (ledger) => {
         console.log('Ledger closed:', ledger.ledger_index)
@@ -438,7 +549,15 @@ async function startXRPLClient() {
   })();
 }
 
-const app = createApp(pool)
+// Initialize trading pairs tracker
+const tradingPairsTracker = new TradingPairsTracker();
+
+// Log trading tracker events
+tradingPairsTracker.on('tradeRecorded', (data) => {
+  console.log(`[TRADING_TRACKER] Trade recorded: ${data.volume} volume for pair ${data.pairKey}`);
+});
+
+const app = createApp(pool, tradingPairsTracker)
 
 // Add middleware to block API access during backfill
 app.use((req, res, next) => {

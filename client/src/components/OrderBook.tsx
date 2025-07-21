@@ -1,273 +1,417 @@
-import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { useQuery } from '@tanstack/react-query';
-import { ArrowUp, ArrowDown, BookOpen, TrendingUp, TrendingDown } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+
+interface OrderBookEntry {
+  price: string;
+  amount: string;
+  account: string;
+  total?: number;
+  percentage?: number;
+  type?: 'bid' | 'ask';
+  isNew?: boolean;
+  isUpdated?: boolean;
+  key?: string;
+}
+
+interface OrderBookData {
+  taker_gets_currency: string;
+  taker_pays_currency: string;
+  bids: OrderBookEntry[];
+  asks: OrderBookEntry[];
+}
 
 interface OrderBookProps {
   selectedPair: string;
 }
 
-interface OrderBookEntry {
-  price: number;
-  volume: number;
-  total: number;
-  percentage: number;
-  type: 'bid' | 'ask';
-}
+// Simple animated number component
+const AnimatedNumber: React.FC<{ 
+  value: number; 
+  decimals?: number; 
+  className?: string;
+  suffix?: string;
+}> = ({ value, decimals = 6, className = '', suffix = '' }) => {
+  const [displayValue, setDisplayValue] = useState(value.toFixed(decimals) + suffix);
+  const targetRef = useRef(value);
+  const animationRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    const startValue = targetRef.current;
+    const endValue = value;
+    
+    if (Math.abs(startValue - endValue) < 0.000001) {
+      setDisplayValue(endValue.toFixed(decimals) + suffix);
+      return;
+    }
+
+    const duration = 600;
+    const startTime = performance.now();
+
+    const animate = (currentTime: number) => {
+      const elapsed = currentTime - startTime;
+      const progress = Math.min(elapsed / duration, 1);
+      const easeOut = 1 - Math.pow(1 - progress, 2);
+      const currentValue = startValue + (endValue - startValue) * easeOut;
+      
+      setDisplayValue(currentValue.toFixed(decimals) + suffix);
+      
+      if (progress < 1) {
+        animationRef.current = requestAnimationFrame(animate);
+      } else {
+        targetRef.current = endValue;
+      }
+    };
+
+    if (animationRef.current) {
+      cancelAnimationFrame(animationRef.current);
+    }
+    
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [value, decimals, suffix]);
+
+  return <span className={className}>{displayValue}</span>;
+};
+
+// Simple order row component
+const OrderRow: React.FC<{ 
+  order: OrderBookEntry; 
+  displayPrice: number;
+  priceCurrency: string;
+}> = React.memo(({ order, displayPrice, priceCurrency }) => {
+  const barRef = useRef<HTMLDivElement>(null);
+  
+  // Update bar width directly
+  useEffect(() => {
+    if (barRef.current) {
+      barRef.current.style.width = `${order.percentage || 0}%`;
+    }
+  }, [order.percentage]);
+
+  return (
+    <div 
+      className={`order-row ${order.type === 'bid' ? 'bid-row' : 'ask-row'}`}
+      style={{ 
+        position: 'relative',
+        padding: '8px 12px',
+        borderRadius: '4px',
+        marginBottom: '2px',
+        cursor: 'pointer'
+      }}
+    >
+      {/* Depth bar */}
+      <div 
+        ref={barRef}
+        className={`depth-bar ${order.type === 'bid' ? 'depth-bid' : 'depth-ask'}`}
+        style={{
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          bottom: 0,
+          width: '0%',
+          borderRadius: '4px',
+          transition: 'width 0.6s ease-out',
+          zIndex: 1
+        }}
+      />
+      
+      <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <AnimatedNumber
+          value={displayPrice}
+          decimals={6}
+          className={`price ${order.type === 'bid' ? 'price-bid' : 'price-ask'}`}
+        />
+        <AnimatedNumber
+          value={parseFloat(order.amount)}
+          decimals={0}
+          className="amount"
+        />
+        <AnimatedNumber
+          value={order.total || 0}
+          decimals={0}
+          className="total text-slate-400 text-sm"
+        />
+      </div>
+    </div>
+  );
+}, (prev, next) => {
+  // Only re-render if key data actually changed
+  return (
+    prev.order.key === next.order.key &&
+    prev.order.price === next.order.price &&
+    prev.order.amount === next.order.amount &&
+    prev.order.total === next.order.total &&
+    prev.order.percentage === next.order.percentage &&
+    prev.displayPrice === next.displayPrice
+  );
+});
 
 const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
+  const [orderBook, setOrderBook] = useState<OrderBookData | null>(null);
   const [viewMode, setViewMode] = useState<'combined' | 'bids' | 'asks'>('combined');
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Fetch order book data
-  const { data: offers, isLoading } = useQuery({
-    queryKey: ['orderbook', selectedPair],
-    queryFn: async () => {
-      const response = await fetch('http://localhost:3001/analytics/orderbook?taker_gets_currency=XRP&taker_pays_currency=USDC');
-      if (!response.ok) {
-        throw new Error('Failed to fetch order book');
+  // Parse the trading pair to get currencies
+  const parseTradingPair = useCallback((pair: string) => {
+    const [base, quote] = pair.split('/');
+    return { base, quote };
+  }, []);
+
+  // Determine which currency to show the price in
+  const getPriceCurrency = useCallback((base: string, quote: string) => {
+    if (base === 'XRP') return quote;
+    if (quote === 'XRP') return base;
+    return quote;
+  }, []);
+
+  // Calculate the display price based on the pair
+  const calculateDisplayPrice = useCallback((order: OrderBookEntry) => {
+    const price = parseFloat(order.price);
+    const { base, quote } = parseTradingPair(selectedPair);
+    
+    if (base === 'XRP' && quote !== 'XRP') {
+      if (order.type === 'ask') {
+        return price > 0 ? 1 / price : 0;
+      } else {
+        return price;
       }
-      return response.json();
-    },
-  });
+    } else if (quote === 'XRP' && base !== 'XRP') {
+      if (order.type === 'ask') {
+        return price;
+      } else {
+        return price > 0 ? 1 / price : 0;
+      }
+    } else {
+      return price;
+    }
+  }, [selectedPair, parseTradingPair]);
 
-  // Process data for order book display
-  const processOrderBook = () => {
-    if (!offers) return { bids: [], asks: [] };
+  // Process order data with running totals
+  const processedData = useMemo(() => {
+    if (!orderBook) return null;
 
-    const processSide = (orders: any[], type: 'bid' | 'ask') => {
+    const processOrders = (orders: OrderBookEntry[], type: 'bid' | 'ask') => {
+      if (!orders?.length) return [];
+      
+      // Filter extreme values and take top 10
+      const filtered = orders
+        .filter(order => {
+          const price = parseFloat(order.price);
+          return price > 0 && price < 1000000; // Basic sanity check
+        })
+        .slice(0, 10);
+
       let runningTotal = 0;
-      const processed = orders.slice(0, 10).map((order: any) => {
+      const withTotals = filtered.map(order => {
         runningTotal += parseFloat(order.amount);
         return {
-          price: parseFloat(order.price),
-          volume: parseFloat(order.amount),
-          total: runningTotal,
-          percentage: 0, // Will be calculated after
+          ...order,
           type,
+          total: runningTotal,
+          key: `${type}-${order.price}-${order.account}`
         };
       });
 
       // Calculate percentages
-      const maxTotal = Math.max(...processed.map(p => p.total));
-      return processed.map(p => ({
-        ...p,
-        percentage: (p.total / maxTotal) * 100,
+      const maxTotal = Math.max(...withTotals.map(o => o.total || 0));
+      return withTotals.map(order => ({
+        ...order,
+        percentage: maxTotal > 0 ? ((order.total || 0) / maxTotal) * 100 : 0
       }));
     };
 
-    const bids = processSide(offers.bids || [], 'bid');
-    const asks = processSide(offers.asks || [], 'ask');
+    return {
+      ...orderBook,
+      bids: processOrders(orderBook.bids, 'bid'),
+      asks: processOrders(orderBook.asks, 'ask')
+    };
+  }, [orderBook]);
 
-    return { bids, asks };
-  };
-
-  const { bids, asks } = processOrderBook();
-
-  const OrderRow: React.FC<{ order: OrderBookEntry; index: number }> = ({ order, index }) => (
-    <motion.div
-      initial={{ opacity: 0, x: order.type === 'bid' ? -20 : 20 }}
-      animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: index * 0.05, duration: 0.3 }}
-      className={`relative flex items-center justify-between px-3 py-2 rounded-lg transition-all duration-200 hover:bg-slate-700/30 group`}
-    >
-      {/* Background bar showing volume */}
-      <div
-        className={`absolute inset-0 rounded-lg transition-all duration-500 ${
-          order.type === 'bid' 
-            ? 'bg-gradient-to-r from-green-500/10 to-transparent' 
-            : 'bg-gradient-to-r from-red-500/10 to-transparent'
-        }`}
-        style={{ width: `${order.percentage}%` }}
-      />
-      
-      <div className="relative z-10 flex items-center justify-between w-full">
-        <div className={`font-mono text-sm font-semibold ${
-          order.type === 'bid' ? 'text-green-400' : 'text-red-400'
-        }`}>
-          {order.price.toFixed(4)}
-        </div>
+  // Fetch order book data
+  useEffect(() => {
+    const fetchOrderBook = async () => {
+      try {
+        const { base, quote } = parseTradingPair(selectedPair);
+        const url = `http://localhost:3001/analytics/orderbook?taker_gets_currency=${base}&taker_pays_currency=${quote}`;
         
-        <div className="text-slate-300 text-sm">
-          {order.volume.toFixed(2)}
-        </div>
-        
-        <div className="text-slate-400 text-xs">
-          {order.total.toFixed(2)}
-        </div>
-      </div>
+        const response = await fetch(url);
+        if (response.ok) {
+          const data = await response.json();
+          setOrderBook(data);
+        }
+      } catch (error) {
+        console.log('Order book fetch failed:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
 
-      {/* Hover effect */}
-      <div className={`absolute inset-0 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200 ${
-        order.type === 'bid' 
-          ? 'bg-green-500/5 border border-green-500/20' 
-          : 'bg-red-500/5 border border-red-500/20'
-      }`} />
-    </motion.div>
-  );
+    fetchOrderBook();
+    const interval = setInterval(fetchOrderBook, 5000);
+    return () => clearInterval(interval);
+  }, [selectedPair, parseTradingPair]);
 
-  if (isLoading) {
+  const { base, quote } = parseTradingPair(selectedPair);
+  const priceCurrency = getPriceCurrency(base, quote);
+  const amountCurrency = base === 'XRP' ? base : (quote === 'XRP' ? quote : base);
+
+  if (isLoading || !processedData) {
     return (
       <div className="chart-container">
         <div className="flex items-center space-x-2 mb-4">
-          <BookOpen className="w-5 h-5 text-blue-400" />
-          <h3 className="text-lg font-semibold text-white">Order Book</h3>
+          <span className="text-blue-400">📖</span>
+          <h3 className="text-xl font-semibold text-white">Order Book</h3>
+          <span className="text-sm text-slate-400">({selectedPair})</span>
         </div>
-        
         <div className="space-y-2">
           {[...Array(10)].map((_, i) => (
-            <div key={i} className="loading-shimmer h-8 rounded"></div>
+            <div key={i} className="loading-shimmer" style={{ height: '32px', borderRadius: '4px' }}></div>
           ))}
         </div>
       </div>
     );
   }
 
+  const bestBid = processedData.bids[0] ? calculateDisplayPrice(processedData.bids[0]) : 0;
+  const bestAsk = processedData.asks[0] ? calculateDisplayPrice(processedData.asks[0]) : 0;
+  const spread = bestAsk && bestBid ? bestAsk - bestBid : 0;
+  const midPrice = bestAsk && bestBid ? (bestBid + bestAsk) / 2 : 0;
+
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.5 }}
-      className="chart-container"
-    >
+    <div className="chart-container">
       {/* Header */}
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center space-x-2">
-          <BookOpen className="w-5 h-5 text-blue-400" />
-          <h3 className="text-lg font-semibold text-white">Order Book</h3>
+          <span className="text-blue-400">📖</span>
+          <h3 className="text-xl font-semibold text-white">Order Book</h3>
+          <span className="text-sm text-slate-400">({selectedPair})</span>
         </div>
 
         {/* View Mode Toggle */}
-        <div className="flex bg-slate-700/50 rounded-lg p-1">
+        <div className="flex" style={{ background: 'rgba(30, 41, 59, 0.8)', borderRadius: '8px', padding: '4px', border: '1px solid rgba(71, 85, 105, 0.3)' }}>
           <button
             onClick={() => setViewMode('bids')}
-            className={`px-2 py-1 rounded text-xs transition-all flex items-center space-x-1 ${
-              viewMode === 'bids'
-                ? 'bg-green-600 text-white'
-                : 'text-slate-300 hover:text-white'
+            className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
+              viewMode === 'bids' 
+                ? 'bg-gradient-to-r from-green-600 to-green-700 text-white shadow-sm border border-green-500' 
+                : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
             }`}
           >
-            <TrendingUp className="w-3 h-3" />
-            <span>Bids</span>
+            Bids
           </button>
           <button
             onClick={() => setViewMode('combined')}
-            className={`px-2 py-1 rounded text-xs transition-all ${
-              viewMode === 'combined'
-                ? 'bg-blue-600 text-white'
-                : 'text-slate-300 hover:text-white'
+            className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
+              viewMode === 'combined' 
+                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm border border-blue-500' 
+                : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
             }`}
           >
             Both
           </button>
           <button
             onClick={() => setViewMode('asks')}
-            className={`px-2 py-1 rounded text-xs transition-all flex items-center space-x-1 ${
-              viewMode === 'asks'
-                ? 'bg-red-600 text-white'
-                : 'text-slate-300 hover:text-white'
+            className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
+              viewMode === 'asks' 
+                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-sm border border-red-500' 
+                : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
             }`}
           >
-            <TrendingDown className="w-3 h-3" />
-            <span>Asks</span>
+            Asks
           </button>
         </div>
       </div>
 
       {/* Column Headers */}
-      <div className="flex items-center justify-between px-3 py-2 text-xs text-slate-400 font-semibold border-b border-slate-700/50 mb-2">
-        <span>Price</span>
-        <span>Amount</span>
+      <div className="flex justify-between px-3 py-2 text-xs text-slate-400 font-semibold border-b border-slate-700/50 mb-3">
+        <span>Price ({priceCurrency})</span>
+        <span>Amount ({amountCurrency})</span>
         <span>Total</span>
       </div>
 
       {/* Order Book Content */}
       <div className="space-y-1">
-        <AnimatePresence mode="wait">
-          {(viewMode === 'combined' || viewMode === 'asks') && (
-            <motion.div
-              key="asks"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-1"
-            >
-              {/* Asks (Sell Orders) - Show in reverse order */}
-              {asks.slice().reverse().map((ask, index) => (
-                <OrderRow key={`ask-${ask.price}`} order={ask} index={index} />
-              ))}
-            </motion.div>
-          )}
+        {/* Asks */}
+        {(viewMode === 'combined' || viewMode === 'asks') && (
+          <div className="asks-section">
+            {processedData.asks.slice().reverse().map((ask) => (
+              <OrderRow 
+                key={ask.key}
+                order={ask} 
+                displayPrice={calculateDisplayPrice(ask)}
+                priceCurrency={priceCurrency}
+              />
+            ))}
+          </div>
+        )}
 
-          {viewMode === 'combined' && (
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              className="flex items-center justify-center py-4 my-2"
-            >
-              <div className="flex items-center space-x-4 bg-slate-800/50 rounded-lg px-4 py-2 border border-slate-600/30">
-                <div className="text-center">
-                  <div className="text-xs text-slate-400">Spread</div>
-                  <div className="text-sm font-semibold text-white">
-                    {asks.length > 0 && bids.length > 0 
-                      ? (asks[0].price - bids[0].price).toFixed(4)
-                      : '--'
-                    }
-                  </div>
-                </div>
-                <div className="w-px h-8 bg-slate-600"></div>
-                <div className="text-center">
-                  <div className="text-xs text-slate-400">Mid Price</div>
-                  <div className="text-lg font-bold text-blue-400">
-                    {asks.length > 0 && bids.length > 0 
-                      ? ((asks[0].price + bids[0].price) / 2).toFixed(4)
-                      : '--'
-                    }
-                  </div>
+        {/* Spread Display */}
+        {viewMode === 'combined' && (
+          <div className="spread-display my-4 py-3 px-4 text-center" style={{
+            background: 'rgba(51, 65, 85, 0.3)',
+            borderRadius: '8px',
+            border: '1px solid rgba(71, 85, 105, 0.3)'
+          }}>
+            <div className="flex items-center justify-center space-x-6">
+              <div className="text-center">
+                <div className="text-xs text-slate-400">Spread</div>
+                <div className="text-sm font-semibold text-white">
+                  <AnimatedNumber value={spread} decimals={6} suffix={` ${priceCurrency}`} />
                 </div>
               </div>
-            </motion.div>
-          )}
+              <div className="w-px h-8" style={{ background: 'rgba(71, 85, 105, 0.5)' }}></div>
+              <div className="text-center">
+                <div className="text-xs text-slate-400">Mid Price</div>
+                <div className="text-lg font-bold text-blue-400">
+                  <AnimatedNumber value={midPrice} decimals={6} suffix={` ${priceCurrency}`} />
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
 
-          {(viewMode === 'combined' || viewMode === 'bids') && (
-            <motion.div
-              key="bids"
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: 'auto' }}
-              exit={{ opacity: 0, height: 0 }}
-              className="space-y-1"
-            >
-              {/* Bids (Buy Orders) */}
-              {bids.map((bid, index) => (
-                <OrderRow key={`bid-${bid.price}`} order={bid} index={index} />
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>
+        {/* Bids */}
+        {(viewMode === 'combined' || viewMode === 'bids') && (
+          <div className="bids-section">
+            {processedData.bids.map((bid) => (
+              <OrderRow 
+                key={bid.key}
+                order={bid} 
+                displayPrice={calculateDisplayPrice(bid)}
+                priceCurrency={priceCurrency}
+              />
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Order Book Stats */}
       <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-700/50">
         <div className="text-center">
           <div className="flex items-center justify-center space-x-1 text-green-400 mb-1">
-            <ArrowUp className="w-4 h-4" />
+            <span>↗</span>
             <span className="text-xs font-semibold">Best Bid</span>
           </div>
           <div className="text-lg font-bold text-green-400">
-            {bids.length > 0 ? bids[0].price.toFixed(4) : '--'}
+            <AnimatedNumber value={bestBid} decimals={6} suffix={` ${priceCurrency}`} />
           </div>
         </div>
         
         <div className="text-center">
           <div className="flex items-center justify-center space-x-1 text-red-400 mb-1">
-            <ArrowDown className="w-4 h-4" />
+            <span>↘</span>
             <span className="text-xs font-semibold">Best Ask</span>
           </div>
           <div className="text-lg font-bold text-red-400">
-            {asks.length > 0 ? asks[0].price.toFixed(4) : '--'}
+            <AnimatedNumber value={bestAsk} decimals={6} suffix={` ${priceCurrency}`} />
           </div>
         </div>
       </div>
-    </motion.div>
+    </div>
   );
 };
 

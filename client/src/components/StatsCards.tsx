@@ -1,5 +1,5 @@
 import React from 'react';
-import { motion } from 'framer-motion';
+import { motion, Variants } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import { TrendingUp, TrendingDown, Activity, DollarSign, BarChart3, Users } from 'lucide-react';
 
@@ -47,22 +47,51 @@ const StatsCards: React.FC = () => {
     },
   });
 
-  const cardVariants = {
+  const { data: topPairs, isLoading: isLoadingTopPairs } = useQuery({
+    queryKey: ['top-trading-pairs', '24h', 3],
+    queryFn: async () => {
+      try {
+        const response = await fetch('http://localhost:3001/top-trading-pairs?window=24h&k=3');
+        if (!response.ok) throw new Error('Failed to fetch top pairs');
+        const data = await response.json();
+        return data.pairs || [];
+      } catch {
+        return [];
+      }
+    },
+  });
+
+  const topPairsString = isLoadingTopPairs
+    ? '--'
+    : (topPairs && topPairs.length > 0
+        ? topPairs.map(p => `${p.takerGets.currency}/${p.takerPays.currency}`).join(', ')
+        : '--');
+
+  const cardVariants: Variants = {
     hidden: { opacity: 0, y: 20, scale: 0.9 },
-    visible: (custom: number) => ({
+    visible: {
       opacity: 1,
       y: 0,
       scale: 1,
       transition: {
-        delay: custom * 0.1,
         duration: 0.5,
         type: "spring",
         stiffness: 100,
       },
-    }),
+    },
   };
 
   const statsCards = [
+    {
+      title: 'Top Pairs (24h)',
+      value: topPairsString,
+      icon: BarChart3,
+      color: 'text-yellow-400',
+      bgGradient: 'from-yellow-500/10 to-yellow-600/10',
+      borderColor: 'border-yellow-500/20',
+      change: '24h',
+      changeDirection: 'up' as const,
+    },
     {
       title: 'Total Offers',
       value: stats?.totalOffers.toLocaleString() || '--',
@@ -147,7 +176,6 @@ const StatsCards: React.FC = () => {
         return (
           <motion.div
             key={card.title}
-            custom={index}
             variants={cardVariants}
             initial="hidden"
             animate="visible"

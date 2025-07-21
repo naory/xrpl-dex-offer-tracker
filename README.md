@@ -48,6 +48,50 @@ xrpl-dex-offer-tracker/
 - [x] Add unit and integration tests
 - [x] Dynamic multi-pair tracking with database-driven configuration
 
+#### New: In-Memory Top-K Trading Pairs Tracker
+- [x] Design and implement an in-memory top-k tracker for the most traded pairs over the past 10 minutes, 1 hour, and 24 hours
+- [x] Integrate the top-k trading pairs tracker with the transaction processing logic to record trades in real time
+- [x] Expose new API endpoints to query the top-k trading pairs for each time window and get stats for specific pairs
+- [ ] Document the new endpoints and usage in the README
+
+#### Enhanced: XRP-Focused Top-K Trading Pairs with Bid/Ask Analysis
+- [ ] **XRP-Only Pairs**: Filter top-k to show only pairs where any currency is traded against XRP (e.g., USDC/XRP, RLUSD/XRP, etc.)
+- [ ] **Bid/Ask Breakdown**: Track and display separate volumes for bids (buying XRP) vs asks (selling XRP)
+- [ ] **Price Display Options**: 
+  - Default: Price in XRP (how much XRP per token)
+  - Toggle: Price in token (how many tokens per XRP)
+- [ ] **Enhanced UI Display**:
+  - Option 1: Combined list with bid/ask breakdown shown for each pair
+  - Option 2: Separate bid and ask sections in one unified view
+- [ ] **Real-time Updates**: Live bid/ask volume tracking with visual indicators
+- [ ] **Price Movement Indicators**: Show price trends and recent changes
+
+#### 🚀 Flashy Trader's View Implementation
+- [ ] **Backend Enhancements**:
+  - [ ] Modify trading tracker to separate bid/ask volumes for XRP pairs
+  - [ ] Add price calculation and trend tracking (% change over time windows)
+  - [ ] Create XRP-focused endpoint filtering non-XRP pairs
+  - [ ] Add price movement data (up/down/neutral with percentages)
+- [ ] **Frontend Trading Floor UI**:
+  - [ ] Replace simple list with animated trader's interface
+  - [ ] Implement bid/ask volume bars with electric green/red colors
+  - [ ] Add real-time price movement arrows (↗️ ↘️) with percentage changes
+  - [ ] Create heat indicators (🔥) based on trading activity
+  - [ ] Add time window filters (24H/1H/10M) with instant switching
+  - [ ] Implement XRP/TOKEN price toggle functionality
+- [ ] **Visual Enhancements**:
+  - [ ] Dark trader-themed color scheme (navy/black background)
+  - [ ] Animated volume bars that grow/shrink with real-time updates
+  - [ ] Smooth counting animations for volume numbers
+  - [ ] Glowing borders/pulse effects for highly active pairs
+  - [ ] Position change animations when rankings shift
+- [ ] **Interactive Features**:
+  - [ ] Click pair to open detailed order book view
+  - [ ] Hover effects with mini price history charts
+  - [ ] Monospace fonts for precise number display
+  - [ ] Special indicators for meme coins and trending tokens
+  - [ ] Optional trading floor sound effects
+
 #### Storage
 - **Primary:** PostgreSQL (easy local dev, AWS RDS, GCP Cloud SQL)
 - **Cache (optional):** Redis (for real-time data, AWS ElastiCache, GCP Memorystore)
@@ -170,5 +214,102 @@ async function backfillOffersForTrackedPairs(pool, trackedPairs) {
   }
 }
 ```
+
+## API: In-Memory Top-K Trading Pairs (Real-Time)
+
+The backend exposes several endpoints for real-time analytics of the most traded pairs over the past 10 minutes, 1 hour, and 24 hours. These endpoints are powered by an in-memory tracker (easy to refactor to Redis if needed).
+
+### Endpoints
+
+#### `GET /top-trading-pairs`
+Returns the top-k most traded pairs for a given time window.
+
+**Query Parameters:**
+- `window`: Time window (`10m`, `1h`, or `24h`). Default: `24h`
+- `k`: Number of pairs to return. Default: `20`
+
+**Example:**
+```
+GET /top-trading-pairs?window=1h&k=5
+```
+**Response:**
+```json
+{
+  "window": "1h",
+  "k": 5,
+  "pairs": [
+    {
+      "pairKey": "...",
+      "takerGets": { "currency": "XRP", "issuer": null },
+      "takerPays": { "currency": "USD", "issuer": "r..." },
+      "volume": 12345.67,
+      "count": 42,
+      "lastUpdate": 1723456789012
+    }
+    // ...
+  ],
+  "timestamp": 1723456789012
+}
+```
+
+#### `GET /trading-stats`
+Returns comprehensive stats for all time windows, including memory usage.
+
+**Query Parameters:**
+- `k`: Number of pairs to return per window. Default: `20`
+
+**Example:**
+```
+GET /trading-stats?k=10
+```
+
+#### `GET /pair-stats/:currency1/:currency2`
+Returns stats for a specific trading pair.
+
+**Query Parameters:**
+- `issuer1`: (optional) Issuer for currency1
+- `issuer2`: (optional) Issuer for currency2
+
+**Example:**
+```
+GET /pair-stats/XRP/USD?issuer2=rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq
+```
+
+#### `GET /trading-pairs/realtime`
+Returns a formatted list of top-k pairs for a given window, with rank and readable fields.
+
+**Query Parameters:**
+- `window`: Time window (`10m`, `1h`, or `24h`). Default: `24h`
+- `k`: Number of pairs to return. Default: `20`
+
+**Example:**
+```
+GET /trading-pairs/realtime?window=10m&k=3
+```
+**Response:**
+```json
+{
+  "window": "10m",
+  "k": 3,
+  "pairs": [
+    {
+      "rank": 1,
+      "pair": "XRP/USD",
+      "volume": 1000.0,
+      "count": 5,
+      "lastUpdate": 1723456789012,
+      "currency1": "XRP",
+      "currency2": "USD",
+      "issuer1": null,
+      "issuer2": "r..."
+    }
+    // ...
+  ],
+  "totalPairs": 10,
+  "timestamp": 1723456789012
+}
+```
+
+**Note:** These endpoints are powered by an in-memory tracker. If you want persistence or distributed state, you can refactor the tracker to use Redis with minimal changes.
 
 ---

@@ -1,7 +1,7 @@
 const express = require('express')
 const cors = require('cors')
 
-function createApp(pool) {
+function createApp(pool, tradingPairsTracker = null) {
   const app = express()
   app.use(cors())
   app.use(express.json())
@@ -238,6 +238,259 @@ function createApp(pool) {
       res.status(500).json({ error: 'Internal server error' })
     }
   })
+
+  // GET /trading-pairs - list all tracked trading pairs from the database
+  app.get('/trading-pairs', async (req, res) => {
+    try {
+      // First try to get pairs from tracked_pairs table if it has data
+      const trackedPairsResult = await pool.query(`
+        SELECT DISTINCT taker_gets_currency, taker_pays_currency 
+        FROM tracked_pairs 
+        WHERE active = TRUE
+        ORDER BY taker_gets_currency, taker_pays_currency
+      `)
+      
+      // If tracked_pairs has data, use it
+      if (trackedPairsResult.rows.length > 0) {
+        const pairs = trackedPairsResult.rows.map(row => 
+          `${row.taker_gets_currency}/${row.taker_pays_currency}`
+        )
+        return res.json({ pairs })
+      }
+      
+      // Otherwise, get pairs from actual offers in the database
+      const offersResult = await pool.query(`
+        SELECT DISTINCT taker_gets_currency, taker_pays_currency 
+        FROM offers 
+        ORDER BY taker_gets_currency, taker_pays_currency
+      `)
+      
+      // If we have offers data, use it
+      if (offersResult.rows.length > 0) {
+        const pairs = offersResult.rows.map(row => 
+          `${row.taker_gets_currency}/${row.taker_pays_currency}`
+        )
+        return res.json({ pairs })
+      }
+      
+      // If no data in either table, return some common XRPL pairs as fallback
+      const fallbackPairs = [
+        'XRP/USDC',
+        'XRP/RLUSD', 
+        'XRP/USD',
+        'XRP/EUR',
+        'XRP/BTC',
+        'USDC/USD'
+      ]
+      
+      res.json({ 
+        pairs: fallbackPairs,
+        note: 'Using fallback pairs - no data found in database'
+      })
+    } catch (err) {
+      console.error('Error fetching trading pairs:', err)
+      // Return fallback pairs if there's any database error
+      const fallbackPairs = [
+        'XRP/USDC',
+        'XRP/RLUSD', 
+        'XRP/USD',
+        'XRP/EUR',
+        'XRP/BTC',
+        'USDC/USD'
+      ]
+      
+      res.json({ 
+        pairs: fallbackPairs,
+        note: 'Using fallback pairs due to database error'
+      })
+    }
+  })
+
+  // Trading Pairs Tracker API endpoints
+  if (tradingPairsTracker) {
+    // GET /top-trading-pairs - get top-k trading pairs for different time windows
+    app.get('/top-trading-pairs', async (req, res) => {
+      try {
+        const { window = '24h', k = 20 } = req.query;
+        const validWindows = ['10m', '1h', '24h'];
+        
+        if (!validWindows.includes(window)) {
+          return res.status(400).json({ 
+            error: `Invalid window. Must be one of: ${validWindows.join(', ')}` 
+          });
+        }
+        
+        const pairs = tradingPairsTracker.getTopKPairs(window, parseInt(k));
+        res.json({
+          window,
+          k: parseInt(k),
+          pairs,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.error('[ERROR] /top-trading-pairs error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // GET /trading-stats - get comprehensive trading statistics
+    app.get('/trading-stats', async (req, res) => {
+      try {
+        const { k = 20 } = req.query;
+        const stats = tradingPairsTracker.getAllStats(parseInt(k));
+        const memoryStats = tradingPairsTracker.getMemoryStats();
+        
+        res.json({
+          stats,
+          memory: memoryStats,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.error('[ERROR] /trading-stats error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // GET /pair-stats/:currency1/:currency2 - get stats for a specific pair
+    app.get('/pair-stats/:currency1/:currency2', async (req, res) => {
+      try {
+        const { currency1, currency2 } = req.params;
+        const { issuer1, issuer2 } = req.query;
+        
+        const takerGets = {
+          currency: currency1.toUpperCase(),
+          issuer: issuer1 || null
+        };
+        
+        const takerPays = {
+          currency: currency2.toUpperCase(),
+          issuer: issuer2 || null
+        };
+        
+        const stats = tradingPairsTracker.getPairStats(takerGets, takerPays);
+        
+        if (Object.keys(stats).length === 0) {
+          return res.status(404).json({ 
+            error: 'No trading data found for this pair' 
+          });
+        }
+        
+        res.json({
+          pair: `${currency1}/${currency2}`,
+          stats,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.error('[ERROR] /pair-stats error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // GET /trading-pairs/realtime - get real-time trading pairs with volume data
+    app.get('/trading-pairs/realtime', async (req, res) => {
+      try {
+        const { window = '24h', k = 20 } = req.query;
+        const validWindows = ['10m', '1h', '24h'];
+        
+        if (!validWindows.includes(window)) {
+          return res.status(400).json({ 
+            error: `Invalid window. Must be one of: ${validWindows.join(', ')}` 
+          });
+        }
+        
+        const pairs = tradingPairsTracker.getTopKPairs(window, parseInt(k));
+        
+        // Format the response for better readability
+        const formattedPairs = pairs.map((pair, index) => ({
+          rank: index + 1,
+          pair: `${pair.takerGets.currency}/${pair.takerPays.currency}`,
+          volume: pair.volume,
+          count: pair.count,
+          lastUpdate: pair.lastUpdate,
+          currency1: pair.takerGets.currency,
+          currency2: pair.takerPays.currency,
+          issuer1: pair.takerGets.issuer,
+          issuer2: pair.takerPays.issuer
+        }));
+        
+        res.json({
+          window,
+          k: parseInt(k),
+          pairs: formattedPairs,
+          totalPairs: tradingPairsTracker.tradingData[window].size,
+          timestamp: Date.now()
+        });
+      } catch (err) {
+        console.error('[ERROR] /trading-pairs/realtime error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+
+    // GET /xrp-pairs/flashy - get XRP trading pairs with bid/ask breakdown for trader's view
+    app.get('/xrp-pairs/flashy', async (req, res) => {
+      try {
+        const { window = '24h', k = 20 } = req.query;
+        const validWindows = ['10m', '1h', '24h'];
+        
+        if (!validWindows.includes(window)) {
+          return res.status(400).json({ 
+            error: `Invalid window. Must be one of: ${validWindows.join(', ')}` 
+          });
+        }
+        
+        const pairs = tradingPairsTracker.getTopKXRPPairs(window, parseInt(k));
+        
+        // Format for flashy trader's view
+        const formattedPairs = pairs.map((pair, index) => {
+          // Determine the non-XRP currency
+          const otherCurrency = pair.takerGets.currency === 'XRP' 
+            ? pair.takerPays.currency 
+            : pair.takerGets.currency;
+          
+          const otherIssuer = pair.takerGets.currency === 'XRP' 
+            ? pair.takerPays.issuer 
+            : pair.takerGets.issuer;
+          
+          // Calculate bid/ask percentages
+          const totalVolume = pair.volume || 1;
+          const bidPercentage = (pair.bidVolume / totalVolume) * 100;
+          const askPercentage = (pair.askVolume / totalVolume) * 100;
+          
+          return {
+            rank: index + 1,
+            pair: `${otherCurrency}/XRP`,
+            otherCurrency,
+            otherIssuer,
+            totalVolume: pair.volume,
+            totalCount: pair.count,
+            bidVolume: pair.bidVolume,
+            askVolume: pair.askVolume,
+            bidCount: pair.bidCount,
+            askCount: pair.askCount,
+            bidPercentage: parseFloat(bidPercentage.toFixed(1)),
+            askPercentage: parseFloat(askPercentage.toFixed(1)),
+            lastPrice: pair.lastPrice,
+            priceChange: pair.priceChange,
+            trend: pair.trend,
+            heatLevel: pair.heatLevel,
+            lastUpdate: pair.lastUpdate
+          };
+        });
+        
+        res.json({
+          window,
+          k: parseInt(k),
+          pairs: formattedPairs,
+          totalXRPPairs: pairs.length,
+          timestamp: Date.now(),
+          traderView: true
+        });
+      } catch (err) {
+        console.error('[ERROR] /xrp-pairs/flashy error:', err);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+  }
 
   return app
 }
