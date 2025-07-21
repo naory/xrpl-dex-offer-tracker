@@ -103,22 +103,16 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
     const asks = processOrders(orderBook.asks, 'ask');
 
     // Calculate price range
-    const allPrices = [...bids.map(b => b.price), ...asks.map(a => a.price)];
-    const minPrice = Math.min(...allPrices);
-    const maxPrice = Math.max(...allPrices);
-    const pricePadding = (maxPrice - minPrice) * 0.1;
-
-    return {
-      bids,
-      asks,
-      priceRange: {
-        min: Math.max(0, minPrice - pricePadding),
-        max: maxPrice + pricePadding
-      }
+    const allPrices = [...bids, ...asks].map(p => p.price).filter(p => p > 0);
+    const priceRange = {
+      min: allPrices.length > 0 ? Math.min(...allPrices) : 0,
+      max: allPrices.length > 0 ? Math.max(...allPrices) : 0
     };
+
+    return { bids, asks, priceRange };
   }, [orderBook, calculateDisplayPrice]);
 
-  // Draw the depth chart
+  // Canvas drawing function
   const drawChart = useCallback(() => {
     const canvas = canvasRef.current;
     if (!canvas || !depthData.bids.length || !depthData.asks.length) return;
@@ -126,197 +120,148 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const { width, height } = canvas;
-    const { bids, asks, priceRange } = depthData;
+    // Set canvas size
+    const rect = canvas.getBoundingClientRect();
+    canvas.width = rect.width * window.devicePixelRatio;
+    canvas.height = rect.height * window.devicePixelRatio;
+    ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+
+    const width = rect.width;
+    const height = rect.height;
+    const padding = { top: 20, right: 30, bottom: 40, left: 60 };
+    const chartWidth = width - padding.left - padding.right;
+    const chartHeight = height - padding.top - padding.bottom;
 
     // Clear canvas
-    ctx.clearRect(0, 0, width, height);
+    ctx.fillStyle = 'rgba(15, 23, 42, 0.3)';
+    ctx.fillRect(0, 0, width, height);
 
     // Calculate scales
-    const maxVolume = Math.max(
-      ...bids.map(b => b.cumulativeVolume),
-      ...asks.map(a => a.cumulativeVolume)
-    );
+    const allVolumes = [...depthData.bids, ...depthData.asks].map(d => d.cumulativeVolume);
+    const maxVolume = Math.max(...allVolumes);
+    const { min: minPrice, max: maxPrice } = depthData.priceRange;
 
-    const priceToX = (price: number) => {
-      return ((price - priceRange.min) / (priceRange.max - priceRange.min)) * width;
-    };
+    const xScale = (price: number) => padding.left + ((price - minPrice) / (maxPrice - minPrice)) * chartWidth;
+    const yScale = (volume: number) => padding.top + chartHeight - (volume / maxVolume) * chartHeight;
 
-    const volumeToY = (volume: number) => {
-      return height - (volume / maxVolume) * height;
-    };
-
-    // Draw grid lines
+    // Draw grid
     ctx.strokeStyle = 'rgba(71, 85, 105, 0.3)';
     ctx.lineWidth = 1;
-    
-    // Vertical grid lines (price)
-    for (let i = 0; i <= 10; i++) {
-      const x = (width / 10) * i;
-      ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, height);
-      ctx.stroke();
-    }
-
-    // Horizontal grid lines (volume)
     for (let i = 0; i <= 5; i++) {
-      const y = (height / 5) * i;
+      const y = padding.top + (i / 5) * chartHeight;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(width, y);
+      ctx.moveTo(padding.left, y);
+      ctx.lineTo(padding.left + chartWidth, y);
       ctx.stroke();
     }
 
-    // Draw depth curves
-    const drawCurve = (points: DepthPoint[], color: string, fill: boolean = false) => {
-      if (points.length < 2) return;
-
-      ctx.strokeStyle = color;
-      ctx.fillStyle = color + '20'; // Add transparency for fill
+    // Draw bid area
+    if (depthData.bids.length > 0) {
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.strokeStyle = '#10b981';
       ctx.lineWidth = 2;
-
+      
       ctx.beginPath();
+      ctx.moveTo(xScale(depthData.bids[0].price), yScale(0));
+      depthData.bids.forEach(point => {
+        ctx.lineTo(xScale(point.price), yScale(point.cumulativeVolume));
+      });
+      ctx.lineTo(xScale(depthData.bids[depthData.bids.length - 1].price), yScale(0));
+      ctx.closePath();
+      ctx.fill();
       
-      // Start from left edge
-      ctx.moveTo(0, height);
-      
-      // Draw curve through points
-      points.forEach((point, index) => {
-        const x = priceToX(point.price);
-        const y = volumeToY(point.cumulativeVolume);
-        
-        if (index === 0) {
-          ctx.lineTo(x, y);
+      ctx.beginPath();
+      depthData.bids.forEach((point, i) => {
+        if (i === 0) {
+          ctx.moveTo(xScale(point.price), yScale(point.cumulativeVolume));
         } else {
-          // Smooth curve
-          const prevPoint = points[index - 1];
-          const prevX = priceToX(prevPoint.price);
-          const prevY = volumeToY(prevPoint.cumulativeVolume);
-          const cp1x = prevX + (x - prevX) * 0.5;
-          const cp1y = prevY;
-          const cp2x = x - (x - prevX) * 0.5;
-          const cp2y = y;
-          ctx.bezierCurveTo(cp1x, cp1y, cp2x, cp2y, x, y);
+          ctx.lineTo(xScale(point.price), yScale(point.cumulativeVolume));
         }
       });
-
-      // Complete the shape for fill
-      if (fill) {
-        ctx.lineTo(width, height);
-        ctx.closePath();
-        ctx.fill();
-      }
-      
       ctx.stroke();
-    };
+    }
 
-    // Draw bid curve (green)
-    drawCurve(bids, '#10b981', true);
-    
-    // Draw ask curve (red)
-    drawCurve(asks, '#ef4444', true);
+    // Draw ask area
+    if (depthData.asks.length > 0) {
+      ctx.fillStyle = 'rgba(239, 68, 68, 0.2)';
+      ctx.strokeStyle = '#ef4444';
+      ctx.lineWidth = 2;
+      
+      ctx.beginPath();
+      ctx.moveTo(xScale(depthData.asks[0].price), yScale(0));
+      depthData.asks.forEach(point => {
+        ctx.lineTo(xScale(point.price), yScale(point.cumulativeVolume));
+      });
+      ctx.lineTo(xScale(depthData.asks[depthData.asks.length - 1].price), yScale(0));
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.beginPath();
+      depthData.asks.forEach((point, i) => {
+        if (i === 0) {
+          ctx.moveTo(xScale(point.price), yScale(point.cumulativeVolume));
+        } else {
+          ctx.lineTo(xScale(point.price), yScale(point.cumulativeVolume));
+        }
+      });
+      ctx.stroke();
+    }
 
-    // Draw mid-price line
-    if (bids.length > 0 && asks.length > 0) {
-      const midPrice = (bids[0].price + asks[0].price) / 2;
-      const midX = priceToX(midPrice);
+    // Draw mid price line
+    const bestBid = depthData.bids[0]?.price || 0;
+    const bestAsk = depthData.asks[0]?.price || 0;
+    if (bestBid && bestAsk) {
+      const midPrice = (bestBid + bestAsk) / 2;
+      const midX = xScale(midPrice);
       
       ctx.strokeStyle = '#3b82f6';
       ctx.lineWidth = 2;
       ctx.setLineDash([5, 5]);
       ctx.beginPath();
-      ctx.moveTo(midX, 0);
-      ctx.lineTo(midX, height);
+      ctx.moveTo(midX, padding.top);
+      ctx.lineTo(midX, padding.top + chartHeight);
       ctx.stroke();
       ctx.setLineDash([]);
     }
 
-    // Draw hover point
-    if (hoveredPoint) {
-      const x = priceToX(hoveredPoint.price);
-      const y = volumeToY(hoveredPoint.cumulativeVolume);
-      
-      ctx.fillStyle = hoveredPoint.type === 'bid' ? '#10b981' : '#ef4444';
-      ctx.beginPath();
-      ctx.arc(x, y, 4, 0, 2 * Math.PI);
-      ctx.fill();
-      
-      // Draw tooltip
-      ctx.fillStyle = 'rgba(15, 23, 42, 0.9)';
-      ctx.fillRect(x + 10, y - 30, 120, 50);
-      
-      ctx.fillStyle = 'white';
-      ctx.font = '12px Arial';
-      ctx.fillText(`Price: ${hoveredPoint.price.toFixed(6)}`, x + 15, y - 15);
-      ctx.fillText(`Volume: ${hoveredPoint.cumulativeVolume.toFixed(0)}`, x + 15, y);
+    // Draw axes labels
+    ctx.fillStyle = '#94a3b8';
+    ctx.font = '12px monospace';
+    ctx.textAlign = 'center';
+    
+    // X-axis (price) labels
+    for (let i = 0; i <= 4; i++) {
+      const price = minPrice + (i / 4) * (maxPrice - minPrice);
+      const x = xScale(price);
+      ctx.fillText(price.toFixed(6), x, height - 10);
     }
-  }, [depthData, hoveredPoint]);
 
-  // Handle canvas resize
-  useEffect(() => {
+    // Y-axis (volume) labels
+    ctx.textAlign = 'right';
+    for (let i = 0; i <= 4; i++) {
+      const volume = (i / 4) * maxVolume;
+      const y = yScale(volume);
+      ctx.fillText(volume.toFixed(0), padding.left - 10, y + 4);
+    }
+
+  }, [depthData]);
+
+  // Mouse move handler
+  const handleMouseMove = useCallback((event: React.MouseEvent<HTMLCanvasElement>) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
-    const resizeCanvas = () => {
-      const container = canvas.parentElement;
-      if (container) {
-        canvas.width = container.clientWidth;
-        canvas.height = 400;
-        drawChart();
-      }
-    };
-
-    resizeCanvas();
-    window.addEventListener('resize', resizeCanvas);
-    return () => window.removeEventListener('resize', resizeCanvas);
-  }, [drawChart]);
-
-  // Handle mouse events
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current;
-    if (!canvas || !depthData.bids.length || !depthData.asks.length) return;
-
     const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-
-    const { width, height } = canvas;
-    const { priceRange } = depthData;
-
-    const priceToX = (price: number) => {
-      return ((price - priceRange.min) / (priceRange.max - priceRange.min)) * width;
-    };
-
-    const xToPrice = (x: number) => {
-      return priceRange.min + (x / width) * (priceRange.max - priceRange.min);
-    };
-
-    const maxVolume = Math.max(
-      ...depthData.bids.map(b => b.cumulativeVolume),
-      ...depthData.asks.map(a => a.cumulativeVolume)
-    );
-
-    const volumeToY = (volume: number) => {
-      return height - (volume / maxVolume) * height;
-    };
-
-    const yToVolume = (y: number) => {
-      return ((height - y) / height) * maxVolume;
-    };
-
-    const hoveredPrice = xToPrice(x);
-    const hoveredVolume = yToVolume(y);
+    const x = event.clientX - rect.left;
+    const y = event.clientY - rect.top;
 
     // Find closest point
-    const allPoints = [...depthData.bids, ...depthData.asks];
-    let closestPoint: DepthPoint | null = null;
+    let closestPoint = null;
     let minDistance = Infinity;
 
-    allPoints.forEach(point => {
-      const pointX = priceToX(point.price);
-      const pointY = volumeToY(point.cumulativeVolume);
-      const distance = Math.sqrt((x - pointX) ** 2 + (y - pointY) ** 2);
+    [...depthData.bids, ...depthData.asks].forEach(point => {
+      const pointX = ((point.price - depthData.priceRange.min) / (depthData.priceRange.max - depthData.priceRange.min)) * (rect.width - 90) + 60;
+      const distance = Math.abs(x - pointX);
       
       if (distance < minDistance && distance < 20) {
         minDistance = distance;
@@ -330,6 +275,11 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
   const handleMouseLeave = useCallback(() => {
     setHoveredPoint(null);
   }, []);
+
+  // Draw chart when data changes
+  useEffect(() => {
+    drawChart();
+  }, [drawChart]);
 
   // Fetch order book data
   useEffect(() => {
@@ -362,13 +312,15 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
   if (isLoading || !depthData.bids.length || !depthData.asks.length) {
     return (
       <div className="chart-container">
-        <div className="flex items-center space-x-2 mb-4">
-          <span className="text-blue-400">📊</span>
-          <h3 className="text-xl font-semibold text-white">Market Depth</h3>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
+        <div className="component-header">
+          <div className="component-title">
+            <span>📊</span>
+            <h3>Market Depth</h3>
+            <span className="component-subtitle">({selectedPair})</span>
+          </div>
         </div>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-slate-400">Loading depth chart...</div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px' }}>
+          <div className="loading-shimmer" style={{ height: '16px', width: '200px' }}></div>
         </div>
       </div>
     );
@@ -382,32 +334,38 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
   return (
     <div className="chart-container">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <span className="text-blue-400">📊</span>
-          <h3 className="text-xl font-semibold text-white">Market Depth</h3>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
+      <div className="component-header">
+        <div className="component-title">
+          <span>📊</span>
+          <h3>Market Depth</h3>
+          <span className="component-subtitle">({selectedPair})</span>
         </div>
 
         {/* Legend */}
-        <div className="flex items-center space-x-4 text-sm" style={{ background: 'rgba(30, 41, 59, 0.6)', borderRadius: '8px', padding: '8px 12px', border: '1px solid rgba(71, 85, 105, 0.2)' }}>
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-green-500 rounded shadow-sm"></div>
-            <span className="text-green-400 font-medium">Bids</span>
+        <div className="btn-group">
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}>
+            <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '2px' }}></div>
+            <span style={{ color: '#10b981', fontWeight: '500', fontSize: '13px' }}>Bids</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-red-500 rounded shadow-sm"></div>
-            <span className="text-red-400 font-medium">Asks</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}>
+            <div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '2px' }}></div>
+            <span style={{ color: '#ef4444', fontWeight: '500', fontSize: '13px' }}>Asks</span>
           </div>
-          <div className="flex items-center space-x-2">
-            <div className="w-3 h-3 bg-blue-500 rounded shadow-sm" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, #3b82f6 2px, #3b82f6 4px)' }}></div>
-            <span className="text-blue-400 font-medium">Mid Price</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}>
+            <div style={{ 
+              width: '12px', 
+              height: '12px', 
+              background: '#3b82f6', 
+              borderRadius: '2px',
+              backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, #3b82f6 2px, #3b82f6 4px)'
+            }}></div>
+            <span style={{ color: '#3b82f6', fontWeight: '500', fontSize: '13px' }}>Mid Price</span>
           </div>
         </div>
       </div>
 
       {/* Chart Container */}
-      <div className="relative">
+      <div style={{ position: 'relative' }}>
         <canvas
           ref={canvasRef}
           onMouseMove={handleMouseMove}
@@ -420,41 +378,70 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
             background: 'rgba(15, 23, 42, 0.3)'
           }}
         />
+        
+        {/* Hover Tooltip */}
+        {hoveredPoint && (
+          <div style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            background: 'rgba(0, 0, 0, 0.8)',
+            color: '#ffffff',
+            padding: '12px',
+            borderRadius: '8px',
+            fontSize: '12px',
+            fontFamily: 'Monaco, Menlo, monospace',
+            border: '1px solid rgba(71, 85, 105, 0.3)',
+            backdropFilter: 'blur(10px)',
+            pointerEvents: 'none'
+          }}>
+            <div>Price: {hoveredPoint.price.toFixed(6)} {priceCurrency}</div>
+            <div>Volume: {hoveredPoint.cumulativeVolume.toFixed(2)} {volumeCurrency}</div>
+            <div>Type: <span style={{ color: hoveredPoint.type === 'bid' ? '#10b981' : '#ef4444' }}>
+              {hoveredPoint.type.toUpperCase()}
+            </span></div>
+          </div>
+        )}
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-4 gap-4 mt-6 pt-4 border-t border-slate-700/50">
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Best Bid</div>
-          <div className="text-lg font-bold text-green-400">
+      <div className="stats-grid cols-4">
+        <div className="stat-item">
+          <div className="stat-label">Best Bid</div>
+          <div className="stat-value green">
             {bestBid.toFixed(6)} {priceCurrency}
           </div>
         </div>
         
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Best Ask</div>
-          <div className="text-lg font-bold text-red-400">
+        <div className="stat-item">
+          <div className="stat-label">Best Ask</div>
+          <div className="stat-value red">
             {bestAsk.toFixed(6)} {priceCurrency}
           </div>
         </div>
 
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Spread</div>
-          <div className="text-lg font-bold text-slate-300">
+        <div className="stat-item">
+          <div className="stat-label">Spread</div>
+          <div className="stat-value">
             {spread.toFixed(6)} {priceCurrency}
           </div>
         </div>
 
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Mid Price</div>
-          <div className="text-lg font-bold text-blue-400">
+        <div className="stat-item">
+          <div className="stat-label">Mid Price</div>
+          <div className="stat-value blue">
             {midPrice.toFixed(6)} {priceCurrency}
           </div>
         </div>
       </div>
 
       {/* Instructions */}
-      <div className="mt-4 text-xs text-slate-500 text-center">
+      <div style={{ 
+        marginTop: '16px', 
+        fontSize: '12px', 
+        color: '#64748b', 
+        textAlign: 'center' 
+      }}>
         Hover over the chart to see detailed price and volume information
       </div>
     </div>

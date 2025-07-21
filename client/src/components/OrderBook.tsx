@@ -93,60 +93,34 @@ const OrderRow: React.FC<{
   }, [order.percentage]);
 
   return (
-    <div 
-      className={`order-row ${order.type === 'bid' ? 'bid-row' : 'ask-row'}`}
-      style={{ 
-        position: 'relative',
-        padding: '8px 12px',
-        borderRadius: '4px',
-        marginBottom: '2px',
-        cursor: 'pointer'
-      }}
-    >
-      {/* Depth bar */}
+    <div className={`order-row ${order.type === 'bid' ? 'bid-row' : 'ask-row'}`}>
       <div 
         ref={barRef}
-        className={`depth-bar ${order.type === 'bid' ? 'depth-bid' : 'depth-ask'}`}
         style={{
           position: 'absolute',
           top: 0,
-          left: 0,
-          bottom: 0,
-          width: '0%',
-          borderRadius: '4px',
-          transition: 'width 0.6s ease-out',
-          zIndex: 1
+          right: 0,
+          height: '100%',
+          background: order.type === 'bid' 
+            ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05))'
+            : 'linear-gradient(90deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05))',
+          borderRadius: '6px',
+          transition: 'width 0.3s ease',
+          zIndex: 1,
         }}
       />
-      
-      <div style={{ position: 'relative', zIndex: 2, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <AnimatedNumber
-          value={displayPrice}
-          decimals={6}
-          className={`price ${order.type === 'bid' ? 'price-bid' : 'price-ask'}`}
-        />
-        <AnimatedNumber
-          value={parseFloat(order.amount)}
-          decimals={0}
-          className="amount"
-        />
-        <AnimatedNumber
-          value={order.total || 0}
-          decimals={0}
-          className="total text-slate-400 text-sm"
-        />
+      <div className="order-row-content">
+        <span className={`order-price ${order.type === 'bid' ? 'stat-value green' : 'stat-value red'}`}>
+          <AnimatedNumber value={displayPrice} decimals={6} />
+        </span>
+        <span className="order-amount">
+          <AnimatedNumber value={parseFloat(order.amount)} decimals={2} />
+        </span>
+        <span className="order-total">
+          <AnimatedNumber value={order.total || 0} decimals={2} suffix={` ${priceCurrency}`} />
+        </span>
       </div>
     </div>
-  );
-}, (prev, next) => {
-  // Only re-render if key data actually changed
-  return (
-    prev.order.key === next.order.key &&
-    prev.order.price === next.order.price &&
-    prev.order.amount === next.order.amount &&
-    prev.order.total === next.order.total &&
-    prev.order.percentage === next.order.percentage &&
-    prev.displayPrice === next.displayPrice
   );
 });
 
@@ -257,69 +231,59 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
 
   const { base, quote } = parseTradingPair(selectedPair);
   const priceCurrency = getPriceCurrency(base, quote);
-  const amountCurrency = base === 'XRP' ? base : (quote === 'XRP' ? quote : base);
 
-  if (isLoading || !processedData) {
+  // Calculate best prices
+  const bestBid = processedData?.bids[0] ? calculateDisplayPrice(processedData.bids[0]) : 0;
+  const bestAsk = processedData?.asks[0] ? calculateDisplayPrice(processedData.asks[0]) : 0;
+  const spread = bestAsk && bestBid ? bestAsk - bestBid : 0;
+  const midPrice = bestAsk && bestBid ? (bestBid + bestAsk) / 2 : 0;
+
+  if (isLoading) {
     return (
       <div className="chart-container">
-        <div className="flex items-center space-x-2 mb-4">
-          <span className="text-blue-400">📖</span>
-          <h3 className="text-xl font-semibold text-white">Order Book</h3>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
+        <div className="component-header">
+          <div className="component-title">
+            <span>📊</span>
+            <h3>Order Book</h3>
+            <span className="component-subtitle">({selectedPair})</span>
+          </div>
         </div>
-        <div className="space-y-2">
-          {[...Array(10)].map((_, i) => (
-            <div key={i} className="loading-shimmer" style={{ height: '32px', borderRadius: '4px' }}></div>
+        <div className="recent-offers-container">
+          {[...Array(8)].map((_, i) => (
+            <div key={i} className="loading-shimmer" style={{ height: '48px' }}></div>
           ))}
         </div>
       </div>
     );
   }
 
-  const bestBid = processedData.bids[0] ? calculateDisplayPrice(processedData.bids[0]) : 0;
-  const bestAsk = processedData.asks[0] ? calculateDisplayPrice(processedData.asks[0]) : 0;
-  const spread = bestAsk && bestBid ? bestAsk - bestBid : 0;
-  const midPrice = bestAsk && bestBid ? (bestBid + bestAsk) / 2 : 0;
-
   return (
     <div className="chart-container">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <span className="text-blue-400">📖</span>
-          <h3 className="text-xl font-semibold text-white">Order Book</h3>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
+      {/* Header with View Mode Toggle */}
+      <div className="component-header">
+        <div className="component-title">
+          <span>📊</span>
+          <h3>Order Book</h3>
+          <span className="component-subtitle">({selectedPair})</span>
         </div>
 
         {/* View Mode Toggle */}
-        <div className="flex" style={{ background: 'rgba(30, 41, 59, 0.8)', borderRadius: '8px', padding: '4px', border: '1px solid rgba(71, 85, 105, 0.3)' }}>
+        <div className="btn-group">
           <button
             onClick={() => setViewMode('bids')}
-            className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-              viewMode === 'bids' 
-                ? 'bg-gradient-to-r from-green-600 to-green-700 text-white shadow-sm border border-green-500' 
-                : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-            }`}
+            className={`btn-toggle btn-toggle-sm ${viewMode === 'bids' ? 'active green' : ''}`}
           >
             Bids
           </button>
           <button
             onClick={() => setViewMode('combined')}
-            className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-              viewMode === 'combined' 
-                ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm border border-blue-500' 
-                : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-            }`}
+            className={`btn-toggle btn-toggle-sm ${viewMode === 'combined' ? 'active' : ''}`}
           >
             Both
           </button>
           <button
             onClick={() => setViewMode('asks')}
-            className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-              viewMode === 'asks' 
-                ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-sm border border-red-500' 
-                : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-            }`}
+            className={`btn-toggle btn-toggle-sm ${viewMode === 'asks' ? 'active red' : ''}`}
           >
             Asks
           </button>
@@ -327,18 +291,26 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
       </div>
 
       {/* Column Headers */}
-      <div className="flex justify-between px-3 py-2 text-xs text-slate-400 font-semibold border-b border-slate-700/50 mb-3">
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        padding: '8px 12px',
+        fontSize: '12px',
+        color: '#94a3b8',
+        fontWeight: '600',
+        borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
+        marginBottom: '12px'
+      }}>
         <span>Price ({priceCurrency})</span>
-        <span>Amount ({amountCurrency})</span>
+        <span>Amount</span>
         <span>Total</span>
       </div>
 
-      {/* Order Book Content */}
-      <div className="space-y-1">
+      <div>
         {/* Asks */}
         {(viewMode === 'combined' || viewMode === 'asks') && (
-          <div className="asks-section">
-            {processedData.asks.length > 0 ? (
+          <div style={{ marginBottom: viewMode === 'combined' ? '16px' : '0' }}>
+            {processedData?.asks && processedData.asks.length > 0 ? (
               processedData.asks.slice().reverse().map((ask) => (
                 <OrderRow 
                   key={ask.key}
@@ -348,9 +320,9 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
                 />
               ))
             ) : (
-              <div className="text-center py-4 text-slate-400">
-                <div className="text-sm">No ask orders available</div>
-                <div className="text-xs text-slate-500 mt-1">for {selectedPair}</div>
+              <div className="no-data">
+                <div className="no-data-title">No ask orders available</div>
+                <div className="no-data-subtitle">for {selectedPair}</div>
               </div>
             )}
           </div>
@@ -358,22 +330,18 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
 
         {/* Spread Display */}
         {viewMode === 'combined' && (
-          <div className="spread-display my-4 py-3 px-4 text-center" style={{
-            background: 'rgba(51, 65, 85, 0.3)',
-            borderRadius: '8px',
-            border: '1px solid rgba(71, 85, 105, 0.3)'
-          }}>
-            <div className="flex items-center justify-center space-x-6">
-              <div className="text-center">
-                <div className="text-xs text-slate-400">Spread</div>
-                <div className="text-sm font-semibold text-white">
+          <div className="spread-display">
+            <div className="spread-content">
+              <div className="spread-item">
+                <div className="stat-label">Spread</div>
+                <div className="stat-value">
                   <AnimatedNumber value={spread} decimals={6} suffix={` ${priceCurrency}`} />
                 </div>
               </div>
-              <div className="w-px h-8" style={{ background: 'rgba(71, 85, 105, 0.5)' }}></div>
-              <div className="text-center">
-                <div className="text-xs text-slate-400">Mid Price</div>
-                <div className="text-lg font-bold text-blue-400">
+              <div className="spread-divider"></div>
+              <div className="spread-item">
+                <div className="stat-label">Mid Price</div>
+                <div className="stat-value blue">
                   <AnimatedNumber value={midPrice} decimals={6} suffix={` ${priceCurrency}`} />
                 </div>
               </div>
@@ -383,8 +351,8 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
 
         {/* Bids */}
         {(viewMode === 'combined' || viewMode === 'bids') && (
-          <div className="bids-section">
-            {processedData.bids.length > 0 ? (
+          <div>
+            {processedData?.bids && processedData.bids.length > 0 ? (
               processedData.bids.map((bid) => (
                 <OrderRow 
                   key={bid.key}
@@ -394,9 +362,9 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
                 />
               ))
             ) : (
-              <div className="text-center py-4 text-slate-400">
-                <div className="text-sm">No bid orders available</div>
-                <div className="text-xs text-slate-500 mt-1">for {selectedPair}</div>
+              <div className="no-data">
+                <div className="no-data-title">No bid orders available</div>
+                <div className="no-data-subtitle">for {selectedPair}</div>
               </div>
             )}
           </div>
@@ -404,23 +372,17 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
       </div>
 
       {/* Order Book Stats */}
-      <div className="grid grid-cols-2 gap-4 mt-6 pt-4 border-t border-slate-700/50">
-        <div className="text-center">
-          <div className="flex items-center justify-center space-x-1 text-green-400 mb-1">
-            <span>↗</span>
-            <span className="text-xs font-semibold">Best Bid</span>
-          </div>
-          <div className="text-lg font-bold text-green-400">
+      <div className="stats-grid cols-2">
+        <div className="stat-item">
+          <div className="stat-label">↗ Best Bid</div>
+          <div className="stat-value green">
             <AnimatedNumber value={bestBid} decimals={6} suffix={` ${priceCurrency}`} />
           </div>
         </div>
         
-        <div className="text-center">
-          <div className="flex items-center justify-center space-x-1 text-red-400 mb-1">
-            <span>↘</span>
-            <span className="text-xs font-semibold">Best Ask</span>
-          </div>
-          <div className="text-lg font-bold text-red-400">
+        <div className="stat-item">
+          <div className="stat-label">↘ Best Ask</div>
+          <div className="stat-value red">
             <AnimatedNumber value={bestAsk} decimals={6} suffix={` ${priceCurrency}`} />
           </div>
         </div>

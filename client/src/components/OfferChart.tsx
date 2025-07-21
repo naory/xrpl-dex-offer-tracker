@@ -149,6 +149,7 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
       .attr('stroke-width', 2)
       .attr('d', line);
 
+    // Animate line
     const lineLength = linePath.node()?.getTotalLength() || 0;
     linePath
       .attr('stroke-dasharray', `${lineLength} ${lineLength}`)
@@ -159,41 +160,31 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
       .attr('stroke-dashoffset', 0);
 
     // Add interactive dots
-    const dots = g.selectAll('.dot')
+    const tooltip = d3.select('body').append('div')
+      .style('position', 'absolute')
+      .style('padding', '10px')
+      .style('background', 'rgba(0, 0, 0, 0.8)')
+      .style('color', 'white')
+      .style('border-radius', '5px')
+      .style('pointer-events', 'none')
+      .style('opacity', 0)
+      .attr('class', 'tooltip');
+
+    g.selectAll('.dot')
       .data(processedData)
       .enter().append('circle')
       .attr('class', 'dot')
       .attr('cx', d => xScale(d.x))
       .attr('cy', d => yScale(chartType === 'price' ? d.price : d.volume))
-      .attr('r', 0)
+      .attr('r', 4)
       .style('fill', '#3b82f6')
-      .style('opacity', 0.7);
-
-    // Animate dots
-    dots.transition()
-      .delay((d, i) => i * 20)
-      .duration(500)
-      .attr('r', 4);
-
-    // Add hover effects
-    dots
+      .style('cursor', 'pointer')
       .on('mouseover', function(event, d) {
         d3.select(this)
           .transition()
           .duration(200)
-          .attr('r', 8)
+          .attr('r', 6)
           .style('fill', '#60a5fa');
-
-        // Tooltip
-        const tooltip = d3.select('body').append('div')
-          .attr('class', 'tooltip')
-          .style('position', 'absolute')
-          .style('background', 'rgba(0, 0, 0, 0.8)')
-          .style('color', 'white')
-          .style('padding', '10px')
-          .style('border-radius', '5px')
-          .style('pointer-events', 'none')
-          .style('opacity', 0);
 
         tooltip.transition()
           .duration(200)
@@ -222,8 +213,14 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
   if (isLoading) {
     return (
       <div className="chart-container">
-        <div className="flex items-center justify-center h-96">
-          <div className="loading-shimmer h-4 w-32 rounded"></div>
+        <div className="component-header">
+          <div className="component-title">
+            <BarChart3 style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
+            <h3>{selectedPair} Chart</h3>
+          </div>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '384px' }}>
+          <div className="loading-shimmer" style={{ height: '16px', width: '128px' }}></div>
         </div>
       </div>
     );
@@ -232,8 +229,16 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
   if (error) {
     return (
       <div className="chart-container">
-        <div className="flex items-center justify-center h-96 text-red-400">
-          Failed to load chart data
+        <div className="component-header">
+          <div className="component-title">
+            <BarChart3 style={{ width: '20px', height: '20px', color: '#ef4444' }} />
+            <h3>{selectedPair} Chart</h3>
+          </div>
+        </div>
+        <div className="no-data">
+          <div className="no-data-icon">📈</div>
+          <div className="no-data-title">Failed to load chart data</div>
+          <div className="no-data-subtitle">Please try again later</div>
         </div>
       </div>
     );
@@ -247,50 +252,36 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
       className="chart-container"
     >
       {/* Chart Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-4">
-          <BarChart3 className="w-6 h-6 text-blue-400" />
-          <h3 className="text-xl font-semibold text-white">
-            {selectedPair} {chartType === 'price' ? 'Price' : 'Volume'} Chart
-          </h3>
+      <div className="component-header">
+        <div className="component-title">
+          <BarChart3 style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
+          <h3>{selectedPair} {chartType === 'price' ? 'Price' : 'Volume'} Chart</h3>
         </div>
 
-        <div className="flex items-center space-x-2">
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
           {/* Chart Type Toggle */}
-          <div className="flex bg-slate-700/50 rounded-lg p-1">
+          <div className="btn-group">
             <button
               onClick={() => setChartType('price')}
-              className={`px-3 py-1 rounded text-sm transition-all ${
-                chartType === 'price'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:text-white'
-              }`}
+              className={`btn-toggle ${chartType === 'price' ? 'active' : ''}`}
             >
               Price
             </button>
             <button
               onClick={() => setChartType('volume')}
-              className={`px-3 py-1 rounded text-sm transition-all ${
-                chartType === 'volume'
-                  ? 'bg-blue-600 text-white'
-                  : 'text-slate-300 hover:text-white'
-              }`}
+              className={`btn-toggle ${chartType === 'volume' ? 'active' : ''}`}
             >
               Volume
             </button>
           </div>
 
           {/* Time Range Toggle */}
-          <div className="flex bg-slate-700/50 rounded-lg p-1">
+          <div className="btn-group">
             {['1h', '24h', '7d'].map((range) => (
               <button
                 key={range}
                 onClick={() => setTimeRange(range as any)}
-                className={`px-3 py-1 rounded text-sm transition-all ${
-                  timeRange === range
-                    ? 'bg-purple-600 text-white'
-                    : 'text-slate-300 hover:text-white'
-                }`}
+                className={`btn-toggle ${timeRange === range ? 'active purple' : ''}`}
               >
                 {range}
               </button>
@@ -300,17 +291,25 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
       </div>
 
       {/* Chart SVG */}
-      <div className="relative">
-        <svg ref={chartRef} className="w-full h-96"></svg>
+      <div style={{ position: 'relative' }}>
+        <svg 
+          ref={chartRef} 
+          style={{ 
+            width: '100%', 
+            height: '384px',
+            borderRadius: '8px',
+            background: 'rgba(15, 23, 42, 0.3)'
+          }}
+        />
         
         {/* Chart Stats */}
-        <div className="grid grid-cols-3 gap-4 mt-4 text-center">
-          <div className="bg-slate-700/30 rounded-lg p-3">
-            <div className="flex items-center justify-center space-x-1 text-green-400">
-              <TrendingUp className="w-4 h-4" />
-              <span className="text-sm">24h High</span>
+        <div className="chart-stats">
+          <div className="chart-stat-card">
+            <div className="chart-stat-header">
+              <TrendingUp className="chart-stat-icon" style={{ color: '#10b981' }} />
+              <span className="chart-stat-label">24h High</span>
             </div>
-            <div className="text-lg font-semibold text-white">
+            <div className="chart-stat-value">
               {offers && offers.length > 0 
                 ? Math.max(...offers.map(o => parseFloat(o.price))).toFixed(6)
                 : '--'
@@ -318,12 +317,12 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
             </div>
           </div>
           
-          <div className="bg-slate-700/30 rounded-lg p-3">
-            <div className="flex items-center justify-center space-x-1 text-red-400">
-              <TrendingDown className="w-4 h-4" />
-              <span className="text-sm">24h Low</span>
+          <div className="chart-stat-card">
+            <div className="chart-stat-header">
+              <TrendingDown className="chart-stat-icon" style={{ color: '#ef4444' }} />
+              <span className="chart-stat-label">24h Low</span>
             </div>
-            <div className="text-lg font-semibold text-white">
+            <div className="chart-stat-value">
               {offers && offers.length > 0 
                 ? Math.min(...offers.map(o => parseFloat(o.price))).toFixed(6)
                 : '--'
@@ -331,9 +330,11 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
             </div>
           </div>
           
-          <div className="bg-slate-700/30 rounded-lg p-3">
-            <div className="text-sm text-slate-400">Total Offers</div>
-            <div className="text-lg font-semibold text-white">
+          <div className="chart-stat-card">
+            <div className="chart-stat-header">
+              <span className="chart-stat-label">Total Offers</span>
+            </div>
+            <div className="chart-stat-value">
               {offers?.length || 0}
             </div>
           </div>

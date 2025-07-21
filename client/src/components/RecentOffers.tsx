@@ -51,50 +51,65 @@ const RecentOffers: React.FC<RecentOffersProps> = ({ selectedPair }) => {
 
   if (isLoading) {
     return (
-      <div className="space-y-2">
-        {[...Array(5)].map((_, i) => (
-          <div key={i} className="loading-shimmer h-16 rounded"></div>
-        ))}
+      <div className="chart-container">
+        <div className="component-header">
+          <div className="component-title">
+            <span>📈</span>
+            <h3>Recent Offers</h3>
+            <span className="component-subtitle">Live Feed</span>
+          </div>
+        </div>
+        <div className="recent-offers-container">
+          {[...Array(5)].map((_, i) => (
+            <div key={i} className="loading-shimmer" style={{ height: '96px' }}></div>
+          ))}
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-2">
-      <div className="flex items-center space-x-2 mb-4">
-        <span className="text-blue-400">📈</span>
-        <span className="text-sm text-slate-400">Recent Offers ({offers.length})</span>
+    <div className="chart-container">
+      <div className="component-header">
+        <div className="component-title">
+          <span>📈</span>
+          <h3>Recent Offers</h3>
+          <span className="component-subtitle">({offers.length} offers)</span>
+        </div>
       </div>
       
       {offers.length > 0 ? (
-        offers.map((offer) => (
-          <div key={offer.id} className="text-xs p-3 bg-slate-800/30 rounded-lg space-y-2 border border-slate-700/30 hover:bg-slate-700/20 transition-colors">
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Account:</span>
-              <span className="text-blue-400 font-mono">{formatAddress(offer.account)}</span>
+        <div className="recent-offers-container">
+          {offers.map((offer) => (
+            <div key={offer.id} className="offer-card">
+              <div className="offer-row">
+                <span className="offer-label">Account:</span>
+                <span className="offer-value account">{formatAddress(offer.account)}</span>
+              </div>
+              <div className="offer-row">
+                <span className="offer-label">Pair:</span>
+                <span className="offer-value pair">{offer.taker_gets_currency}/{offer.taker_pays_currency}</span>
+              </div>
+              <div className="offer-row">
+                <span className="offer-label">Price:</span>
+                <span className="offer-value price">{parseFloat(offer.price).toFixed(6)}</span>
+              </div>
+              <div className="offer-row">
+                <span className="offer-label">Amount:</span>
+                <span className="offer-value amount">{parseFloat(offer.taker_gets_value).toFixed(4)} {offer.taker_gets_currency}</span>
+              </div>
+              <div className="offer-row">
+                <span className="offer-label">Updated:</span>
+                <span className="offer-value time">{formatTime(offer.updated_at)}</span>
+              </div>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Pair:</span>
-              <span className="text-white font-semibold">{offer.taker_gets_currency}/{offer.taker_pays_currency}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Price:</span>
-              <span className="text-green-400 font-mono font-semibold">{parseFloat(offer.price).toFixed(6)}</span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-400">Amount:</span>
-              <span className="text-slate-300 font-mono">{parseFloat(offer.taker_gets_value).toFixed(4)} {offer.taker_gets_currency}</span>
-            </div>
-            <div className="flex justify-between items-center text-xs">
-              <span className="text-slate-500">Updated:</span>
-              <span className="text-slate-400">{formatTime(offer.updated_at)}</span>
-            </div>
-          </div>
-        ))
+          ))}
+        </div>
       ) : (
-        <div className="text-center text-slate-400 py-8">
-          <div className="text-2xl mb-2">📈</div>
-          <div>No recent offers available</div>
+        <div className="no-data">
+          <div className="no-data-icon">📈</div>
+          <div className="no-data-title">No recent offers available</div>
+          <div className="no-data-subtitle">Waiting for new offer data...</div>
         </div>
       )}
     </div>
