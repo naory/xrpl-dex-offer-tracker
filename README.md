@@ -247,51 +247,102 @@ xrpl-dex-offer-tracker/
 
 ### Prerequisites
 
-- Node.js (v18+ recommended)
-- npm or yarn
+- **Docker & Docker Compose** (recommended for easiest setup)
+- **Node.js (v18+)** and npm/yarn (for local development)
 
-### Setup
+### Quick Start with Docker Compose (Recommended)
 
-1. Clone the repository:
+The easiest way to get the backend running is using Docker Compose, which handles both the database and server automatically:
+
+1. **Clone the repository:**
    ```bash
    git clone https://github.com/yourusername/xrpl-dex-offer-tracker.git
    cd xrpl-dex-offer-tracker
    ```
 
-2. Start PostgreSQL and Redis:
+2. **Start the backend (database + server) for mainnet:**
    ```bash
    docker-compose up -d
    ```
 
-3. Initialize databases:
+3. **Verify the backend is running:**
+   ```bash
+   # Check service status
+   docker-compose ps
+   
+   # Check health endpoint
+   curl http://localhost:3001/health
+   
+   # View server logs
+   docker logs xrpl_server
+   ```
+
+4. **Start the frontend client:**
+   ```bash
+   cd client
+   npm install
+   npm start
+   ```
+
+5. **Stop the backend when done:**
+   ```bash
+   docker-compose down
+   ```
+
+#### What Docker Compose Provides
+
+- **PostgreSQL Database**: Automatically configured and ready
+- **XRPL Server**: Backend API connected to XRPL mainnet
+- **Automatic Networking**: Services can communicate internally
+- **Data Persistence**: Database data persists between restarts
+- **Health Monitoring**: Built-in health checks for reliability
+
+#### Accessing Services
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Backend API | `http://localhost:3001` | REST API endpoints |
+| Health Check | `http://localhost:3001/health` | System status |
+| Database | `localhost:5433` | PostgreSQL (if needed) |
+
+### Manual Local Development Setup
+
+For local development with more control, you can run services manually:
+
+1. **Clone and install:**
+   ```bash
+   git clone https://github.com/yourusername/xrpl-dex-offer-tracker.git
+   cd xrpl-dex-offer-tracker
+   ```
+
+2. **Start PostgreSQL only:**
+   ```bash
+   docker-compose up -d postgres_test
+   ```
+
+3. **Initialize databases:**
    ```bash
    # Initialize test database
    ./server/init_test_db.sh
    
-   # Initialize main database
+   # Initialize main database  
    ./server/init_main_db.sh
    ```
 
-4. Install dependencies for both client and server:
+4. **Install dependencies:**
    ```bash
    cd client && npm install
    cd ../server && npm install
    ```
 
-5. Start the backend server:
+5. **Start the backend server manually:**
    ```bash
-   # Option 1: Using the start script (recommended)
    cd server
    ./start.sh testnet   # For testnet (default)
    ./start.sh mainnet   # For mainnet
-
-   # Option 2: Using npm scripts
-   cd server
-   npm run dev      # For testnet
-   npm run mainnet  # For mainnet
    ```
 
-6. Start the frontend client:
+6. **Start the frontend client:**
    ```bash
    cd client
    npm start

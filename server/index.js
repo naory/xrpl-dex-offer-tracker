@@ -407,120 +407,6 @@ async function backfillOffersForTrackedPairs(pool, trackedPairs) {
   console.log('[BACKFILL] Backfill complete.');
 }
 
-async function startXRPLClient() {
-  let client
-  let reconnectDelay = 1000 // Start with 1 second
-  const maxDelay = 30000 // Max 30 seconds
-  let currentPairs = []
-  let subscribedKeys = new Set()
-
-  async function subscribeToPairs(client, pairs) {
-    if (!pairs.length) return
-    const books = pairs.map(({ taker_gets, taker_pays }) => ({
-      taker_gets,
-      taker_pays,
-      snapshot: true,
-      both: true
-    }))
-    const request = {
-      command: 'subscribe',
-      books,
-      streams: ['transactions'],
-    }
-    const response = await client.request(request)
-    console.log('Subscribed to order books:', books, response)
-    // Log initial snapshots for all books
-    if (response.result && response.result.books) {
-      response.result.books.forEach((book, i) => {
-        if (book.bids || book.asks) {
-          console.log(`Initial order book snapshot for pair ${i}:`)
-          if (book.bids) book.bids.forEach((bid, j) => console.log(`[BID ${j+1}]`, bid))
-          if (book.asks) book.asks.forEach((ask, j) => console.log(`[ASK ${j+1}]`, ask))
-        }
-      })
-    }
-  }
-
-  async function connectAndSubscribe() {
-    client = new xrpl.Client(XRPL_WS_URL)
-    try {
-      await client.connect()
-      console.log('Connected to XRPL WebSocket (' + XRPL_NET + ")")
-      // Initial load and subscribe
-      currentPairs = await loadTrackedPairs(pool)
-      subscribedKeys = new Set(currentPairs.map(pairsKey))
-      await subscribeToPairs(client, currentPairs)
-      client.on('transaction', (tx) => {
-        const txHuman = convertCurrenciesToISO(tx);
-        if (process.env.LOG_FULL_TX) {
-          console.log(`[${new Date().toISOString()}] Full transaction event:`, JSON.stringify(txHuman, null, 2));
-        }
-        handleTransaction(tx, pool, tradingPairsTracker).catch(console.error)
-      })
-      client.on('ledgerClosed', (ledger) => {
-        console.log('Ledger closed:', ledger.ledger_index)
-      })
-      client.on('disconnected', handleDisconnect)
-      client.on('error', handleError)
-      reconnectDelay = 1000 // Reset delay on successful connect
-      // Start periodic refresh
-      setInterval(refreshPairs, REFRESH_CURRENCIES_INTERVAL * 1000)
-    } catch (err) {
-      console.error('XRPL connection error:', err)
-      scheduleReconnect()
-    }
-  }
-
-  async function refreshPairs() {
-    try {
-      const newPairs = await loadTrackedPairs(pool)
-      const newKeys = new Set(newPairs.map(pairsKey))
-      // Find pairs to subscribe (new) and unsubscribe (removed)
-      const toSubscribe = newPairs.filter(p => !subscribedKeys.has(pairsKey(p)))
-      // Unsubscribe logic can be added here if needed
-      if (toSubscribe.length) {
-        await subscribeToPairs(client, toSubscribe)
-        toSubscribe.forEach(p => subscribedKeys.add(pairsKey(p)))
-      }
-      // Optionally, handle unsubscription for removed pairs
-      // (not implemented here for simplicity)
-      currentPairs = newPairs
-    } catch (err) {
-      console.error('Error refreshing tracked pairs:', err)
-    }
-  }
-
-  function handleDisconnect() {
-    console.warn('XRPL WebSocket disconnected')
-    scheduleReconnect()
-  }
-
-  function handleError(err) {
-    console.error('XRPL WebSocket error:', err)
-    scheduleReconnect()
-  }
-
-  function scheduleReconnect() {
-    if (client && client.isConnected()) {
-      client.disconnect().catch(() => {})
-    }
-    setTimeout(() => {
-      reconnectDelay = Math.min(reconnectDelay * 2, maxDelay)
-      console.log(`Reconnecting to XRPL in ${reconnectDelay / 1000}s...`)
-      connectAndSubscribe()
-    }, reconnectDelay)
-  }
-
-  // Refactored: run backfill, then start websocket
-  (async () => {
-    const trackedPairs = await loadTrackedPairs(pool);
-    backfillInProgress = true;
-    await backfillOffersForTrackedPairs(pool, trackedPairs);
-    backfillInProgress = false;
-    await connectAndSubscribe();
-  })();
-}
-
 // Initialize trading pairs tracker
 const tradingPairsTracker = new TradingPairsTracker();
 
@@ -529,28 +415,164 @@ tradingPairsTracker.on('tradeRecorded', (data) => {
   console.log(`[TRADING_TRACKER] Trade recorded: ${data.volume} volume for pair ${data.pairKey}`);
 });
 
-const app = createApp(pool, tradingPairsTracker)
+// XRPL WebSocket variables
+let client = null;
+let server = null;
+let currentPairs = [];
+let subscribedKeys = new Set();
+let reconnectDelay = 1000;
+const maxDelay = 30000;
 
-// Add middleware to block API access during backfill
-app.use((req, res, next) => {
-  if (backfillInProgress) {
-    return res.status(503).json({ message: "Backfill in progress, please try again soon." });
+async function connectAndSubscribe() {
+  client = new xrpl.Client(XRPL_WS_URL);
+  try {
+    await client.connect();
+    console.log('Connected to XRPL WebSocket (' + XRPL_NET + ")");
+    
+    // Initial load and subscribe
+    currentPairs = await loadTrackedPairs(pool);
+    subscribedKeys = new Set(currentPairs.map(pairsKey));
+    await subscribeToPairs(client, currentPairs);
+    
+    client.on('transaction', (tx) => {
+      const txHuman = convertCurrenciesToISO(tx);
+      if (process.env.LOG_FULL_TX) {
+        console.log(`[${new Date().toISOString()}] Full transaction event:`, JSON.stringify(txHuman, null, 2));
+      }
+      handleTransaction(tx, pool, tradingPairsTracker).catch(console.error);
+    });
+    
+    client.on('ledgerClosed', (ledger) => {
+      console.log('Ledger closed:', ledger.ledger_index);
+    });
+    
+    client.on('disconnected', handleDisconnect);
+    client.on('error', handleError);
+    reconnectDelay = 1000; // Reset delay on successful connect
+    
+    // Start periodic refresh
+    setInterval(refreshPairs, REFRESH_CURRENCIES_INTERVAL * 1000);
+    
+    // Start the Express server after WebSocket connection
+    startExpressServer();
+    
+  } catch (err) {
+    console.error('XRPL connection error:', err);
+    scheduleReconnect();
   }
-  next();
-});
-
-const PORT = process.env.PORT || 3001
-if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Express API server listening on port ${PORT}`)
-  })
 }
 
-module.exports = { handleTransaction, backfillOffersForTrackedPairs }
+async function subscribeToPairs(client, pairs) {
+  for (const pair of pairs) {
+    try {
+      await subscribeToOrderBook(client, pair.taker_gets, pair.taker_pays);
+    } catch (err) {
+      console.error('Error subscribing to pair:', pair, err);
+    }
+  }
+}
 
+async function refreshPairs() {
+  try {
+    const newPairs = await loadTrackedPairs(pool);
+    const newKeys = new Set(newPairs.map(pairsKey));
+    // Find pairs to subscribe (new) and unsubscribe (removed)
+    const toSubscribe = newPairs.filter(p => !subscribedKeys.has(pairsKey(p)));
+    // Unsubscribe logic can be added here if needed
+    if (toSubscribe.length) {
+      await subscribeToPairs(client, toSubscribe);
+      toSubscribe.forEach(p => subscribedKeys.add(pairsKey(p)));
+    }
+    // Optionally, handle unsubscription for removed pairs
+    // (not implemented here for simplicity)
+    currentPairs = newPairs;
+  } catch (err) {
+    console.error('Error refreshing tracked pairs:', err);
+  }
+}
+
+function handleDisconnect() {
+  console.warn('XRPL WebSocket disconnected');
+  scheduleReconnect();
+}
+
+function handleError(err) {
+  console.error('XRPL WebSocket error:', err);
+  scheduleReconnect();
+}
+
+function scheduleReconnect() {
+  if (client && client.isConnected()) {
+    client.disconnect().catch(() => {});
+  }
+  setTimeout(() => {
+    reconnectDelay = Math.min(reconnectDelay * 2, maxDelay);
+    console.log(`Reconnecting to XRPL in ${reconnectDelay / 1000}s...`);
+    connectAndSubscribe();
+  }, reconnectDelay);
+}
+
+function startExpressServer() {
+  console.log("Starting Express server after WebSocket connection established...");
+  const app = createApp(pool, tradingPairsTracker);
+  
+  // Expose XRPL client and status to the Express app for health checks
+  app.locals.xrplClient = client;
+  app.locals.backfillInProgress = backfillInProgress;
+  
+  const port = process.env.PORT || 3001;
+  server = app.listen(port, () => {
+    console.log(`Server is running on port ${port}`);
+  });
+
+  // Graceful shutdown
+  process.on('SIGINT', () => {
+    console.log('Received SIGINT, shutting down gracefully...');
+    if (server) {
+      server.close(() => {
+        console.log('HTTP server closed');
+        if (client && client.isConnected()) {
+          client.disconnect().then(() => {
+            console.log('XRPL client disconnected');
+            process.exit(0);
+          }).catch(() => {
+            console.log('Error disconnecting XRPL client');
+            process.exit(1);
+          });
+        } else {
+          process.exit(0);
+        }
+      });
+    }
+  });
+
+  // Update backfill status in app locals when it changes
+  setInterval(() => {
+    if (app.locals.backfillInProgress !== backfillInProgress) {
+      app.locals.backfillInProgress = backfillInProgress;
+    }
+  }, 1000);
+}
+
+// Only start the server if this is the main module (not being imported for testing)
 if (require.main === module) {
-  startXRPLClient()
-} 
+  // Refactored: run backfill, then start websocket and server
+  (async () => {
+    const trackedPairs = await loadTrackedPairs(pool);
+    backfillInProgress = true;
+    await backfillOffersForTrackedPairs(pool, trackedPairs);
+    backfillInProgress = false;
+    await connectAndSubscribe();
+  })();
+} else {
+  // For testing: create app without WebSocket connection
+  const app = createApp(pool, tradingPairsTracker);
+  app.locals.xrplClient = null; // No WebSocket in test mode
+  app.locals.backfillInProgress = false;
+  module.exports.app = app;
+}
+
+module.exports = { handleTransaction, backfillOffersForTrackedPairs }; 
 
 // Helper to convert XRPL hex currency code to ISO 3-letter code
 function hexToIsoCurrency(hex) {

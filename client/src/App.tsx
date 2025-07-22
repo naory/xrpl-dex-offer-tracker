@@ -25,14 +25,30 @@ function App() {
   const [selectedPair, setSelectedPair] = useState('XRP/USDC');
   const [isConnected, setIsConnected] = useState(false);
 
-  // Simulate connection status
+  // Check backend and XRPL WebSocket connection status
   useEffect(() => {
     const checkConnection = async () => {
       try {
-        const response = await fetch('http://localhost:3001/offers?limit=1');
-        setIsConnected(response.ok);
+        const response = await fetch('http://localhost:3001/health');
+        if (response.ok) {
+          const healthData = await response.json();
+          // Consider connection "live" only if both API and XRPL WebSocket are working
+          const isFullyConnected = healthData.status === 'ok' && 
+                                  healthData.checks?.xrplWebSocket?.status === 'ok' &&
+                                  healthData.checks?.database?.status === 'ok';
+          setIsConnected(isFullyConnected);
+        } else {
+          setIsConnected(false);
+        }
       } catch (error) {
-        setIsConnected(false);
+        console.warn('Health check failed, falling back to basic API check:', error);
+        // Fallback to basic API check if health endpoint is not available
+        try {
+          const response = await fetch('http://localhost:3001/offers?limit=1');
+          setIsConnected(response.ok);
+        } catch (fallbackError) {
+          setIsConnected(false);
+        }
       }
     };
 

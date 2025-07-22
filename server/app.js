@@ -30,6 +30,99 @@ function createApp(pool, tradingPairsTracker = null) {
     }
   })
 
+  // GET /health - comprehensive health check including XRPL WebSocket status
+  app.get('/health', async (req, res) => {
+    const healthStatus = {
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      checks: {
+        database: { status: 'unknown' },
+        xrplWebSocket: { status: 'unknown' },
+        api: { status: 'ok' },
+        backfill: { status: 'unknown' }
+      }
+    };
+
+    try {
+      // Check database connectivity
+      try {
+        await pool.query('SELECT 1');
+        healthStatus.checks.database = {
+          status: 'ok',
+          message: 'Database connection healthy'
+        };
+      } catch (dbError) {
+        healthStatus.checks.database = {
+          status: 'error',
+          message: 'Database connection failed',
+          error: dbError.message
+        };
+        healthStatus.status = 'degraded';
+      }
+
+      // Check XRPL WebSocket connection status
+      // This requires the client to be accessible - we'll pass it from the main module
+      if (req.app.locals.xrplClient) {
+        const client = req.app.locals.xrplClient;
+        if (client.isConnected && client.isConnected()) {
+          healthStatus.checks.xrplWebSocket = {
+            status: 'ok',
+            message: 'XRPL WebSocket connected and active',
+            url: client.url || 'unknown'
+          };
+        } else {
+          healthStatus.checks.xrplWebSocket = {
+            status: 'error',
+            message: 'XRPL WebSocket not connected',
+            url: client.url || 'unknown'
+          };
+          healthStatus.status = 'degraded';
+        }
+      } else {
+        healthStatus.checks.xrplWebSocket = {
+          status: 'error',
+          message: 'XRPL client not initialized'
+        };
+        healthStatus.status = 'degraded';
+      }
+
+      // Check backfill status
+      if (req.app.locals.backfillInProgress !== undefined) {
+        healthStatus.checks.backfill = {
+          status: req.app.locals.backfillInProgress ? 'in_progress' : 'complete',
+          message: req.app.locals.backfillInProgress ? 'Initial data backfill in progress' : 'Initial data backfill complete'
+        };
+        
+        if (req.app.locals.backfillInProgress) {
+          healthStatus.status = 'initializing';
+        }
+      }
+
+      // Determine overall status
+      const hasErrors = Object.values(healthStatus.checks).some(check => check.status === 'error');
+      if (hasErrors && healthStatus.status === 'ok') {
+        healthStatus.status = 'degraded';
+      }
+
+      // Return appropriate HTTP status code
+      const httpStatus = healthStatus.status === 'ok' ? 200 : 
+                        healthStatus.status === 'initializing' ? 202 : 503;
+
+      res.status(httpStatus).json(healthStatus);
+
+    } catch (error) {
+      console.error('Health check failed:', error);
+      res.status(503).json({
+        status: 'error',
+        timestamp: new Date().toISOString(),
+        message: 'Health check failed',
+        error: error.message,
+        checks: healthStatus.checks
+      });
+    }
+  });
+
   // GET /offer-history - list offer history with filtering, sorting, pagination
   app.get('/offer-history', async (req, res) => {
     try {
