@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Card, CardHeader, CardContent, Typography, Skeleton, Box, Divider } from '@mui/material';
 
 interface Offer {
   id: number;
@@ -51,143 +52,52 @@ const RecentOffers: React.FC<RecentOffersProps> = ({ selectedPair }) => {
 
   if (isLoading) {
     return (
-      <div className="chart-container">
-        <div className="component-header">
-          <div className="component-title">
-            <span>📈</span>
-            <h3>Recent Offers</h3>
-            <span className="component-subtitle">Live Feed</span>
-          </div>
-        </div>
-        <div className="recent-offers-container">
+      <Card>
+        <CardHeader title="Recent Offers" subheader="Live Feed" />
+        <CardContent>
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="loading-shimmer" style={{ height: '40px' }}></div>
+            <Skeleton key={i} variant="rectangular" height={40} sx={{ mb: 1 }} />
           ))}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="chart-container">
-      <div className="component-header">
-        <div className="component-title">
-          <span>📈</span>
-          <h3>Recent Offers</h3>
-          <span className="component-subtitle">({offers.length} offers)</span>
-        </div>
-      </div>
-      
-      {/* Table Header */}
-      <div style={{
-        display: 'grid',
-        gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr',
-        gap: '12px',
-        padding: '12px 16px',
-        fontSize: '12px',
-        fontWeight: '600',
-        color: '#94a3b8',
-        textTransform: 'uppercase',
-        letterSpacing: '0.5px',
-        borderBottom: '1px solid rgba(71, 85, 105, 0.3)',
-        marginBottom: '8px'
-      }}>
-        <div>Account</div>
-        <div>Pair</div>
-        <div style={{ textAlign: 'right' }}>Price</div>
-        <div style={{ textAlign: 'right' }}>Amount</div>
-        <div style={{ textAlign: 'right' }}>Time</div>
-      </div>
-      
-      {offers.length > 0 ? (
-        <div className="recent-offers-container">
-          {offers.map((offer) => (
-            <div 
-              key={offer.id} 
-              style={{
-                display: 'grid',
-                gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr',
-                gap: '12px',
-                padding: '12px 16px',
-                background: 'rgba(30, 41, 59, 0.4)',
-                border: '1px solid rgba(71, 85, 105, 0.3)',
-                borderRadius: '8px',
-                marginBottom: '4px',
-                transition: 'all 0.2s ease',
-                cursor: 'pointer',
-                alignItems: 'center'
-              }}
-              onMouseEnter={(e) => {
-                e.currentTarget.style.background = 'rgba(51, 65, 85, 0.5)';
-                e.currentTarget.style.borderColor = 'rgba(96, 165, 250, 0.3)';
-              }}
-              onMouseLeave={(e) => {
-                e.currentTarget.style.background = 'rgba(30, 41, 59, 0.4)';
-                e.currentTarget.style.borderColor = 'rgba(71, 85, 105, 0.3)';
-              }}
-            >
-              {/* Account */}
-              <div style={{
-                fontFamily: 'Monaco, Menlo, monospace',
-                fontSize: '12px',
-                color: '#3b82f6',
-                fontWeight: '500'
-              }}>
-                {formatAddress(offer.account)}
-              </div>
-
-              {/* Pair */}
-              <div style={{
-                fontSize: '13px',
-                color: '#ffffff',
-                fontWeight: '600'
-              }}>
-                {offer.taker_gets_currency}/{offer.taker_pays_currency}
-              </div>
-
-              {/* Price */}
-              <div style={{
-                fontFamily: 'Monaco, Menlo, monospace',
-                fontSize: '13px',
-                color: '#10b981',
-                fontWeight: '600',
-                textAlign: 'right'
-              }}>
-                {parseFloat(offer.price).toFixed(6)}
-              </div>
-
-              {/* Amount */}
-              <div style={{
-                fontFamily: 'Monaco, Menlo, monospace',
-                fontSize: '12px',
-                color: '#94a3b8',
-                textAlign: 'right'
-              }}>
-                <div>{parseFloat(offer.taker_gets_value).toFixed(2)}</div>
-                <div style={{ fontSize: '10px', color: '#64748b' }}>
-                  {offer.taker_gets_currency}
-                </div>
-              </div>
-
-              {/* Time */}
-              <div style={{
-                fontSize: '11px',
-                color: '#64748b',
-                textAlign: 'right'
-              }}>
-                {formatTime(offer.updated_at)}
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="no-data">
-          <div className="no-data-icon">📈</div>
-          <div className="no-data-title">No recent offers available</div>
-          <div className="no-data-subtitle">Waiting for new offer data...</div>
-        </div>
-      )}
-    </div>
+    <Card>
+      <CardHeader title="Recent Offers" subheader={`(${offers.length} offers)`} />
+      <CardContent>
+        <Box sx={{ display: 'grid', gridTemplateColumns: '2fr 3fr 2fr 3fr 2fr', gap: 2, fontSize: 12, fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+          <Box>Account</Box>
+          <Box>Pair</Box>
+          <Box textAlign="right">Price</Box>
+          <Box textAlign="right">Amount</Box>
+          <Box textAlign="right">Time</Box>
+        </Box>
+        <Divider />
+        <Box mt={1}>
+          {offers.length > 0 ? (
+            offers.map((offer) => (
+              <Box key={offer.id} sx={{ display: 'grid', gridTemplateColumns: '2fr 3fr 2fr 3fr 2fr', gap: 2, alignItems: 'center', py: 1.2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Typography variant="body2" sx={{ fontFamily: 'Monaco, Menlo, monospace', color: 'info.main' }}>{formatAddress(offer.account)}</Typography>
+                <Typography variant="body2" fontWeight={600}>{offer.taker_gets_currency}/{offer.taker_pays_currency}</Typography>
+                <Typography variant="body2" textAlign="right" color="success.main" sx={{ fontFamily: 'Monaco, Menlo, monospace' }}>{parseFloat(offer.price).toFixed(6)}</Typography>
+                <Box textAlign="right">
+                  <Typography variant="body2" sx={{ fontFamily: 'Monaco, Menlo, monospace' }}>{parseFloat(offer.taker_gets_value).toFixed(2)}</Typography>
+                  <Typography variant="caption" color="text.secondary">{offer.taker_gets_currency}</Typography>
+                </Box>
+                <Typography variant="caption" color="text.secondary" textAlign="right">{formatTime(offer.updated_at)}</Typography>
+              </Box>
+            ))
+          ) : (
+            <Box textAlign="center" py={4}>
+              <Typography variant="h6">No recent offers available</Typography>
+              <Typography variant="body2" color="text.secondary">Waiting for new offer data...</Typography>
+            </Box>
+          )}
+        </Box>
+      </CardContent>
+    </Card>
   );
 };
 

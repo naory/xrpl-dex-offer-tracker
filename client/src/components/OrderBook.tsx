@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Card, CardHeader, CardContent, ToggleButton, ToggleButtonGroup, Typography, Box, Skeleton } from '@mui/material';
 
 interface OrderBookEntry {
   price: string;
@@ -83,25 +84,17 @@ const OrderRow: React.FC<{
   displayPrice: number;
   priceCurrency: string;
 }> = React.memo(({ order, displayPrice, priceCurrency }) => {
-  const barRef = useRef<HTMLDivElement>(null);
-  
-  // Update bar width directly
-  useEffect(() => {
-    if (barRef.current) {
-      barRef.current.style.width = `${order.percentage || 0}%`;
-    }
-  }, [order.percentage]);
 
   return (
     <div className={`order-row ${order.type === 'bid' ? 'bid-row' : 'ask-row'}`}>
-      <div 
-        ref={barRef}
-        style={{
+      <Box
+        sx={{
           position: 'absolute',
           top: 0,
           right: 0,
           height: '100%',
-          background: order.type === 'bid' 
+          width: `${order.percentage || 0}%`,
+          background: order.type === 'bid'
             ? 'linear-gradient(90deg, rgba(16, 185, 129, 0.15), rgba(16, 185, 129, 0.05))'
             : 'linear-gradient(90deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05))',
           borderRadius: '6px',
@@ -240,154 +233,103 @@ const OrderBook: React.FC<OrderBookProps> = ({ selectedPair }) => {
 
   if (isLoading) {
     return (
-      <div className="chart-container">
-        <div className="component-header">
-          <div className="component-title">
-            <span>📊</span>
-            <h3>Order Book</h3>
-            <span className="component-subtitle">({selectedPair})</span>
-          </div>
-        </div>
-        <div className="recent-offers-container">
+      <Card>
+        <CardHeader title="Order Book" subheader={`(${selectedPair})`} />
+        <CardContent>
           {[...Array(8)].map((_, i) => (
-            <div key={i} className="loading-shimmer" style={{ height: '48px' }}></div>
+            <Skeleton key={i} variant="rectangular" height={48} sx={{ mb: 1 }} />
           ))}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     );
   }
 
   return (
-    <div className="chart-container">
-      {/* Header with View Mode Toggle */}
-      <div className="component-header">
-        <div className="component-title">
-          <span>📊</span>
-          <h3>Order Book</h3>
-          <span className="component-subtitle">({selectedPair})</span>
-        </div>
-
-        {/* View Mode Toggle */}
-        <div className="btn-group">
-          <button
-            onClick={() => setViewMode('bids')}
-            className={`btn-toggle btn-toggle-sm ${viewMode === 'bids' ? 'active green' : ''}`}
+    <Card>
+      <CardHeader
+        title="Order Book"
+        subheader={`(${selectedPair})`}
+        action={
+          <ToggleButtonGroup
+            size="small"
+            exclusive
+            value={viewMode}
+            onChange={(_, val) => val && setViewMode(val)}
           >
-            Bids
-          </button>
-          <button
-            onClick={() => setViewMode('combined')}
-            className={`btn-toggle btn-toggle-sm ${viewMode === 'combined' ? 'active' : ''}`}
-          >
-            Both
-          </button>
-          <button
-            onClick={() => setViewMode('asks')}
-            className={`btn-toggle btn-toggle-sm ${viewMode === 'asks' ? 'active red' : ''}`}
-          >
-            Asks
-          </button>
-        </div>
-      </div>
+            <ToggleButton value="bids">Bids</ToggleButton>
+            <ToggleButton value="combined">Both</ToggleButton>
+            <ToggleButton value="asks">Asks</ToggleButton>
+          </ToggleButtonGroup>
+        }
+      />
+      <CardContent>
+        <Box display="flex" justifyContent="space-between" fontSize={12} color="text.secondary" fontWeight={600} mb={1}>
+          <span>Price ({priceCurrency})</span>
+          <span>Amount</span>
+          <span>Total</span>
+        </Box>
 
-      {/* Column Headers */}
-      <div style={{
-        display: 'flex',
-        justifyContent: 'space-between',
-        padding: '8px 12px',
-        fontSize: '12px',
-        color: '#94a3b8',
-        fontWeight: '600',
-        borderBottom: '1px solid rgba(71, 85, 105, 0.5)',
-        marginBottom: '12px'
-      }}>
-        <span>Price ({priceCurrency})</span>
-        <span>Amount</span>
-        <span>Total</span>
-      </div>
+        <Box>
+          {(viewMode === 'combined' || viewMode === 'asks') && (
+            <Box mb={viewMode === 'combined' ? 2 : 0}>
+              {processedData?.asks && processedData.asks.length > 0 ? (
+                processedData.asks.slice().reverse().map((ask) => (
+                  <OrderRow
+                    key={ask.key}
+                    order={ask}
+                    displayPrice={calculateDisplayPrice(ask)}
+                    priceCurrency={priceCurrency}
+                  />
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary">No ask orders available for {selectedPair}</Typography>
+              )}
+            </Box>
+          )}
 
-      <div>
-        {/* Asks */}
-        {(viewMode === 'combined' || viewMode === 'asks') && (
-          <div style={{ marginBottom: viewMode === 'combined' ? '16px' : '0' }}>
-            {processedData?.asks && processedData.asks.length > 0 ? (
-              processedData.asks.slice().reverse().map((ask) => (
-                <OrderRow 
-                  key={ask.key}
-                  order={ask} 
-                  displayPrice={calculateDisplayPrice(ask)}
-                  priceCurrency={priceCurrency}
-                />
-              ))
-            ) : (
-              <div className="no-data">
-                <div className="no-data-title">No ask orders available</div>
-                <div className="no-data-subtitle">for {selectedPair}</div>
-              </div>
-            )}
-          </div>
-        )}
+          {viewMode === 'combined' && (
+            <Box display="flex" alignItems="center" justifyContent="space-between" py={1.5}>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Spread</Typography>
+                <Typography variant="body2"><AnimatedNumber value={spread} decimals={6} suffix={` ${priceCurrency}`} /></Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Mid Price</Typography>
+                <Typography variant="body2" color="info.main"><AnimatedNumber value={midPrice} decimals={6} suffix={` ${priceCurrency}`} /></Typography>
+              </Box>
+            </Box>
+          )}
 
-        {/* Spread Display */}
-        {viewMode === 'combined' && (
-          <div className="spread-display">
-            <div className="spread-content">
-              <div className="spread-item">
-                <div className="stat-label">Spread</div>
-                <div className="stat-value">
-                  <AnimatedNumber value={spread} decimals={6} suffix={` ${priceCurrency}`} />
-                </div>
-              </div>
-              <div className="spread-divider"></div>
-              <div className="spread-item">
-                <div className="stat-label">Mid Price</div>
-                <div className="stat-value blue">
-                  <AnimatedNumber value={midPrice} decimals={6} suffix={` ${priceCurrency}`} />
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+          {(viewMode === 'combined' || viewMode === 'bids') && (
+            <Box>
+              {processedData?.bids && processedData.bids.length > 0 ? (
+                processedData.bids.map((bid) => (
+                  <OrderRow
+                    key={bid.key}
+                    order={bid}
+                    displayPrice={calculateDisplayPrice(bid)}
+                    priceCurrency={priceCurrency}
+                  />
+                ))
+              ) : (
+                <Typography variant="body2" color="text.secondary">No bid orders available for {selectedPair}</Typography>
+              )}
+            </Box>
+          )}
+        </Box>
 
-        {/* Bids */}
-        {(viewMode === 'combined' || viewMode === 'bids') && (
-          <div>
-            {processedData?.bids && processedData.bids.length > 0 ? (
-              processedData.bids.map((bid) => (
-                <OrderRow 
-                  key={bid.key}
-                  order={bid} 
-                  displayPrice={calculateDisplayPrice(bid)}
-                  priceCurrency={priceCurrency}
-                />
-              ))
-            ) : (
-              <div className="no-data">
-                <div className="no-data-title">No bid orders available</div>
-                <div className="no-data-subtitle">for {selectedPair}</div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Order Book Stats */}
-      <div className="stats-grid cols-2">
-        <div className="stat-item">
-          <div className="stat-label">↗ Best Bid</div>
-          <div className="stat-value green">
-            <AnimatedNumber value={bestBid} decimals={6} suffix={` ${priceCurrency}`} />
-          </div>
-        </div>
-        
-        <div className="stat-item">
-          <div className="stat-label">↘ Best Ask</div>
-          <div className="stat-value red">
-            <AnimatedNumber value={bestAsk} decimals={6} suffix={` ${priceCurrency}`} />
-          </div>
-        </div>
-      </div>
-    </div>
+        <Box display="grid" gridTemplateColumns="repeat(2,1fr)" gap={2} mt={2}>
+          <Box>
+            <Typography variant="caption" color="text.secondary">↗ Best Bid</Typography>
+            <Typography variant="body2" color="success.main"><AnimatedNumber value={bestBid} decimals={6} suffix={` ${priceCurrency}`} /></Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">↘ Best Ask</Typography>
+            <Typography variant="body2" color="error.main"><AnimatedNumber value={bestAsk} decimals={6} suffix={` ${priceCurrency}`} /></Typography>
+          </Box>
+        </Box>
+      </CardContent>
+    </Card>
   );
 };
 

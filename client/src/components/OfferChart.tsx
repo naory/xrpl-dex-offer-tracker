@@ -2,7 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
 import * as d3 from 'd3';
-import { TrendingUp, TrendingDown, BarChart3 } from 'lucide-react';
+import { TrendingUp, TrendingDown } from 'lucide-react';
+import SectionCard from './common/SectionCard';
+import { ToggleButtonGroup, ToggleButton, Typography, Box, Skeleton } from '@mui/material';
+import { chartSvgSx } from '../styles/sx';
 
 interface Offer {
   id: number;
@@ -212,134 +215,66 @@ const OfferChart: React.FC<OfferChartProps> = ({ selectedPair }) => {
 
   if (isLoading) {
     return (
-      <div className="chart-container">
-        <div className="component-header">
-          <div className="component-title">
-            <BarChart3 style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
-            <h3>{selectedPair} Chart</h3>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '384px' }}>
-          <div className="loading-shimmer" style={{ height: '16px', width: '128px' }}></div>
-        </div>
-      </div>
+      <SectionCard title="Offer Chart" subheader={selectedPair}>
+        <Skeleton variant="rectangular" height={384} />
+      </SectionCard>
     );
   }
 
   if (error) {
     return (
-      <div className="chart-container">
-        <div className="component-header">
-          <div className="component-title">
-            <BarChart3 style={{ width: '20px', height: '20px', color: '#ef4444' }} />
-            <h3>{selectedPair} Chart</h3>
-          </div>
-        </div>
-        <div className="no-data">
-          <div className="no-data-icon">📈</div>
-          <div className="no-data-title">Failed to load chart data</div>
-          <div className="no-data-subtitle">Please try again later</div>
-        </div>
-      </div>
+      <SectionCard title="Offer Chart" subheader={selectedPair}>
+        <Typography variant="body2" color="error.main">Failed to load chart data. Please try again later.</Typography>
+      </SectionCard>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.95 }}
-      animate={{ opacity: 1, scale: 1 }}
-      transition={{ duration: 0.5 }}
-      className="chart-container"
-    >
-      {/* Chart Header */}
-      <div className="component-header">
-        <div className="component-title">
-          <BarChart3 style={{ width: '20px', height: '20px', color: '#3b82f6' }} />
-          <h3>{selectedPair} {chartType === 'price' ? 'Price' : 'Volume'} Chart</h3>
-        </div>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-          {/* Chart Type Toggle */}
-          <div className="btn-group">
-            <button
-              onClick={() => setChartType('price')}
-              className={`btn-toggle ${chartType === 'price' ? 'active' : ''}`}
-            >
-              Price
-            </button>
-            <button
-              onClick={() => setChartType('volume')}
-              className={`btn-toggle ${chartType === 'volume' ? 'active' : ''}`}
-            >
-              Volume
-            </button>
-          </div>
-
-          {/* Time Range Toggle */}
-          <div className="btn-group">
-            {['1h', '24h', '7d'].map((range) => (
-              <button
-                key={range}
-                onClick={() => setTimeRange(range as any)}
-                className={`btn-toggle ${timeRange === range ? 'active purple' : ''}`}
-              >
-                {range}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Chart SVG */}
-      <div style={{ position: 'relative' }}>
-        <svg 
-          ref={chartRef} 
-          style={{ 
-            width: '100%', 
-            height: '384px',
-            borderRadius: '8px',
-            background: 'rgba(15, 23, 42, 0.3)'
-          }}
-        />
-        
-        {/* Chart Stats */}
-        <div className="chart-stats">
-          <div className="chart-stat-card">
-            <div className="chart-stat-header">
-              <TrendingUp className="chart-stat-icon" style={{ color: '#10b981' }} />
-              <span className="chart-stat-label">24h High</span>
-            </div>
-            <div className="chart-stat-value">
-              {offers && offers.length > 0 
-                ? Math.max(...offers.map(o => parseFloat(o.price))).toFixed(6)
-                : '--'
-              }
-            </div>
-          </div>
-          
-          <div className="chart-stat-card">
-            <div className="chart-stat-header">
-              <TrendingDown className="chart-stat-icon" style={{ color: '#ef4444' }} />
-              <span className="chart-stat-label">24h Low</span>
-            </div>
-            <div className="chart-stat-value">
-              {offers && offers.length > 0 
-                ? Math.min(...offers.map(o => parseFloat(o.price))).toFixed(6)
-                : '--'
-              }
-            </div>
-          </div>
-          
-          <div className="chart-stat-card">
-            <div className="chart-stat-header">
-              <span className="chart-stat-label">Total Offers</span>
-            </div>
-            <div className="chart-stat-value">
-              {offers?.length || 0}
-            </div>
-          </div>
-        </div>
-      </div>
+    <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.5 }}>
+      <SectionCard
+        title={`${selectedPair} ${chartType === 'price' ? 'Price' : 'Volume'} Chart`}
+        action={
+            <Box display="flex" alignItems="center" gap={2}>
+              <ToggleButtonGroup size="small" exclusive value={chartType} onChange={(_, v) => v && setChartType(v)}>
+                <ToggleButton value="price">Price</ToggleButton>
+                <ToggleButton value="volume">Volume</ToggleButton>
+              </ToggleButtonGroup>
+              <ToggleButtonGroup size="small" exclusive value={timeRange} onChange={(_, v) => v && setTimeRange(v)}>
+                <ToggleButton value="1h">1h</ToggleButton>
+                <ToggleButton value="24h">24h</ToggleButton>
+                <ToggleButton value="7d">7d</ToggleButton>
+              </ToggleButtonGroup>
+            </Box>
+          }
+      >
+          <Box position="relative">
+            <Box component="svg" ref={chartRef as any} sx={chartSvgSx} />
+            <Box display="grid" gridTemplateColumns="repeat(3, 1fr)" gap={2} mt={2}>
+              <Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <TrendingUp size={16} color="#10b981" />
+                  <Typography variant="caption" color="text.secondary">24h High</Typography>
+                </Box>
+                <Typography variant="body1">
+                  {offers && offers.length > 0 ? Math.max(...offers.map(o => parseFloat(o.price))).toFixed(6) : '--'}
+                </Typography>
+              </Box>
+              <Box>
+                <Box display="flex" alignItems="center" gap={1}>
+                  <TrendingDown size={16} color="#ef4444" />
+                  <Typography variant="caption" color="text.secondary">24h Low</Typography>
+                </Box>
+                <Typography variant="body1">
+                  {offers && offers.length > 0 ? Math.min(...offers.map(o => parseFloat(o.price))).toFixed(6) : '--'}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="caption" color="text.secondary">Total Offers</Typography>
+                <Typography variant="body1">{offers?.length || 0}</Typography>
+              </Box>
+            </Box>
+          </Box>
+      </SectionCard>
     </motion.div>
   );
 };

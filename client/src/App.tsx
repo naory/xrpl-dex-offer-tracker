@@ -1,7 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { ThemeProvider, CssBaseline, Container, Box, Divider } from '@mui/material';
+import theme from './theme';
 import { motion } from 'framer-motion';
 import Header from './components/Header';
+import { useAppStore } from './store/useAppStore';
 import StatsCards from './components/StatsCards';
 import TopTradingPairs from './components/TopTradingPairs';
 import OrderBook from './components/OrderBook';
@@ -22,8 +25,10 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const [selectedPair, setSelectedPair] = useState('XRP/USDC');
-  const [isConnected, setIsConnected] = useState(false);
+  const selectedPair = useAppStore((s) => s.selectedPair);
+  const setSelectedPair = useAppStore((s) => s.setSelectedPair);
+  const isConnected = useAppStore((s) => s.isConnected);
+  const setIsConnected = useAppStore((s) => s.setIsConnected);
 
   // Check backend and XRPL WebSocket connection status
   useEffect(() => {
@@ -55,7 +60,7 @@ function App() {
     checkConnection();
     const interval = setInterval(checkConnection, 10000); // Check every 10 seconds
     return () => clearInterval(interval);
-  }, []);
+  }, [setIsConnected]);
 
   const handlePairChange = (pair: string) => {
     setSelectedPair(pair);
@@ -63,91 +68,69 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="App min-h-screen bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900">
-        <Header 
-          selectedPair={selectedPair}
-          onPairChange={handlePairChange}
-          isConnected={isConnected}
-        />
-        
-        <main className="container mx-auto px-4 py-6 space-y-6">
-          {/* Stats Cards Section - Summary Overview */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <StatsCards />
-          </motion.div>
+      <ThemeProvider theme={theme}>
+        <CssBaseline />
+        <Box
+          sx={{
+            minHeight: '100vh',
+            background: 'linear-gradient(135deg, #0f172a 0%, #111827 50%, #0f172a 100%)',
+          }}
+        >
+          <Header selectedPair={selectedPair} onPairChange={handlePairChange} isConnected={isConnected} />
+          <Container maxWidth="lg" sx={{ py: 3 }}>
+            <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+              <StatsCards />
+            </motion.div>
 
-          {/* Top Trading Pairs Section - Detailed View */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.1 }}
-          >
-            <TopTradingPairs />
-          </motion.div>
+            <Box sx={{ mt: 3 }}>
+              <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6, delay: 0.1 }}>
+                <TopTradingPairs />
+              </motion.div>
+            </Box>
 
-          {/* Charts Grid */}
-          <div className="grid grid-cols-1 xl:grid-cols-2 gap-6">
-            {/* Left Column */}
-            <div className="space-y-6">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.2 }}
-              >
-                <OrderBook selectedPair={selectedPair} />
-              </motion.div>
-              
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.4 }}
-              >
-                <MarketDepth selectedPair={selectedPair} />
-              </motion.div>
-            </div>
+            <Box
+              sx={{
+                mt: 3,
+                display: 'grid',
+                gap: 2,
+                gridTemplateColumns: { xs: '1fr', xl: '1fr 1fr' },
+                alignItems: 'start',
+              }}
+            >
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.2 }}>
+                  <OrderBook selectedPair={selectedPair} />
+                </motion.div>
+                <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.4 }}>
+                  <MarketDepth selectedPair={selectedPair} />
+                </motion.div>
+              </Box>
+              <Box sx={{ display: 'grid', gap: 2 }}>
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.3 }}>
+                  <OfferChart selectedPair={selectedPair} />
+                </motion.div>
+                <motion.div initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.6, delay: 0.5 }}>
+                  <RecentOffers selectedPair={selectedPair} />
+                </motion.div>
+              </Box>
+            </Box>
 
-            {/* Right Column */}
-            <div className="space-y-6">
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.3 }}
-              >
-                <OfferChart selectedPair={selectedPair} />
-              </motion.div>
-              
-              <motion.div
-                initial={{ opacity: 0, x: 20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.6, delay: 0.5 }}
-              >
-                <RecentOffers selectedPair={selectedPair} />
-              </motion.div>
-            </div>
-          </div>
-
-          {/* Footer */}
-          <motion.footer
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.6, delay: 0.8 }}
-            className="text-center py-6 text-slate-400 text-sm border-t border-slate-700/50"
-          >
-            <p>XRPL DEX Offer Tracker - Real-time XRPL trading data</p>
-            <p className="mt-1">
-              {isConnected ? (
-                <span className="text-green-400">🟢 Connected to XRPL</span>
-              ) : (
-                <span className="text-red-400">🔴 Connection lost</span>
-              )}
-            </p>
-          </motion.footer>
-        </main>
-      </div>
+            <motion.footer initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6, delay: 0.8 }}>
+              <Divider sx={{ my: 3 }} />
+              <Box sx={{ textAlign: 'center', color: 'text.secondary', fontSize: 14, py: 2 }}>
+                <Box>XRPL DEX Offer Tracker - Real-time XRPL trading data</Box>
+                <Box sx={{ mt: 0.5 }}>
+                  {isConnected ? (
+                    <Box component="span" sx={{ color: 'success.main' }}>🟢 Connected to XRPL</Box>
+                  ) : (
+                    <Box component="span" sx={{ color: 'error.main' }}>🔴 Connection lost</Box>
+                  )}
+                </Box>
+              </Box>
+            </motion.footer>
+          </Container>
+        </Box>
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }

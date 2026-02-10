@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Typography, Box, Skeleton, Chip } from '@mui/material';
+import { chartCanvasSx, tooltipBoxSx } from '../styles/sx';
+import SectionCard from './common/SectionCard';
 
 interface OrderBookEntry {
   price: string;
@@ -148,10 +151,10 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
     ctx.strokeStyle = 'rgba(71, 85, 105, 0.3)';
     ctx.lineWidth = 1;
     for (let i = 0; i <= 5; i++) {
-      const y = padding.top + (i / 5) * chartHeight;
+      const yPos = padding.top + (i / 5) * chartHeight;
       ctx.beginPath();
-      ctx.moveTo(padding.left, y);
-      ctx.lineTo(padding.left + chartWidth, y);
+      ctx.moveTo(padding.left, yPos);
+      ctx.lineTo(padding.left + chartWidth, yPos);
       ctx.stroke();
     }
 
@@ -240,8 +243,8 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
     ctx.textAlign = 'right';
     for (let i = 0; i <= 4; i++) {
       const volume = (i / 4) * maxVolume;
-      const y = yScale(volume);
-      ctx.fillText(volume.toFixed(0), padding.left - 10, y + 4);
+      const yPos = yScale(volume);
+      ctx.fillText(volume.toFixed(0), padding.left - 10, yPos + 4);
     }
 
   }, [depthData]);
@@ -253,7 +256,6 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
 
     const rect = canvas.getBoundingClientRect();
     const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
 
     // Find closest point
     let closestPoint = null;
@@ -311,18 +313,9 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
 
   if (isLoading || !depthData.bids.length || !depthData.asks.length) {
     return (
-      <div className="chart-container">
-        <div className="component-header">
-          <div className="component-title">
-            <span>📊</span>
-            <h3>Market Depth</h3>
-            <span className="component-subtitle">({selectedPair})</span>
-          </div>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '400px' }}>
-          <div className="loading-shimmer" style={{ height: '16px', width: '200px' }}></div>
-        </div>
-      </div>
+      <SectionCard title="Market Depth" subheader={`(${selectedPair})`}>
+        <Skeleton variant="rectangular" height={400} />
+      </SectionCard>
     );
   }
 
@@ -332,119 +325,49 @@ const MarketDepth: React.FC<MarketDepthProps> = ({ selectedPair }) => {
   const midPrice = bestAsk && bestBid ? (bestBid + bestAsk) / 2 : 0;
 
   return (
-    <div className="chart-container">
-      {/* Header */}
-      <div className="component-header">
-        <div className="component-title">
-          <span>📊</span>
-          <h3>Market Depth</h3>
-          <span className="component-subtitle">({selectedPair})</span>
-        </div>
-
-        {/* Legend */}
-        <div className="btn-group">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#10b981', borderRadius: '2px' }}></div>
-            <span style={{ color: '#10b981', fontWeight: '500', fontSize: '13px' }}>Bids</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}>
-            <div style={{ width: '12px', height: '12px', background: '#ef4444', borderRadius: '2px' }}></div>
-            <span style={{ color: '#ef4444', fontWeight: '500', fontSize: '13px' }}>Asks</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 12px' }}>
-            <div style={{ 
-              width: '12px', 
-              height: '12px', 
-              background: '#3b82f6', 
-              borderRadius: '2px',
-              backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, #3b82f6 2px, #3b82f6 4px)'
-            }}></div>
-            <span style={{ color: '#3b82f6', fontWeight: '500', fontSize: '13px' }}>Mid Price</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Chart Container */}
-      <div style={{ position: 'relative' }}>
-        <canvas
-          ref={canvasRef}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          style={{
-            width: '100%',
-            height: '400px',
-            cursor: 'crosshair',
-            borderRadius: '8px',
-            background: 'rgba(15, 23, 42, 0.3)'
-          }}
-        />
-        
-        {/* Hover Tooltip */}
-        {hoveredPoint && (
-          <div style={{
-            position: 'absolute',
-            top: '20px',
-            right: '20px',
-            background: 'rgba(0, 0, 0, 0.8)',
-            color: '#ffffff',
-            padding: '12px',
-            borderRadius: '8px',
-            fontSize: '12px',
-            fontFamily: 'Monaco, Menlo, monospace',
-            border: '1px solid rgba(71, 85, 105, 0.3)',
-            backdropFilter: 'blur(10px)',
-            pointerEvents: 'none'
-          }}>
-            <div>Price: {hoveredPoint.price.toFixed(6)} {priceCurrency}</div>
-            <div>Volume: {hoveredPoint.cumulativeVolume.toFixed(2)} {volumeCurrency}</div>
-            <div>Type: <span style={{ color: hoveredPoint.type === 'bid' ? '#10b981' : '#ef4444' }}>
-              {hoveredPoint.type.toUpperCase()}
-            </span></div>
-          </div>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="stats-grid cols-4">
-        <div className="stat-item">
-          <div className="stat-label">Best Bid</div>
-          <div className="stat-value green">
-            {bestBid.toFixed(6)} {priceCurrency}
-          </div>
-        </div>
-        
-        <div className="stat-item">
-          <div className="stat-label">Best Ask</div>
-          <div className="stat-value red">
-            {bestAsk.toFixed(6)} {priceCurrency}
-          </div>
-        </div>
-
-        <div className="stat-item">
-          <div className="stat-label">Spread</div>
-          <div className="stat-value">
-            {spread.toFixed(6)} {priceCurrency}
-          </div>
-        </div>
-
-        <div className="stat-item">
-          <div className="stat-label">Mid Price</div>
-          <div className="stat-value blue">
-            {midPrice.toFixed(6)} {priceCurrency}
-          </div>
-        </div>
-      </div>
-
-      {/* Instructions */}
-      <div style={{ 
-        marginTop: '16px', 
-        fontSize: '12px', 
-        color: '#64748b', 
-        textAlign: 'center' 
-      }}>
-        Hover over the chart to see detailed price and volume information
-      </div>
-    </div>
+    <SectionCard
+      title="Market Depth"
+      subheader={`(${selectedPair})`}
+      action={
+        <Box display="flex" gap={1}>
+          <Chip label="Bids" size="small" sx={{ color: '#10b981', borderColor: '#10b981' }} variant="outlined" />
+          <Chip label="Asks" size="small" sx={{ color: '#ef4444', borderColor: '#ef4444' }} variant="outlined" />
+          <Chip label="Mid Price" size="small" color="info" variant="outlined" />
+        </Box>
+      }
+    >
+        <Box position="relative">
+          <Box component="canvas" ref={canvasRef as any} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} sx={chartCanvasSx} />
+          {hoveredPoint && (
+            <Box position="absolute" top={20} right={20} sx={tooltipBoxSx}>
+              <div>Price: {hoveredPoint.price.toFixed(6)} {priceCurrency}</div>
+              <div>Volume: {hoveredPoint.cumulativeVolume.toFixed(2)} {volumeCurrency}</div>
+              <div>Type: <span style={{ color: hoveredPoint.type === 'bid' ? '#10b981' : '#ef4444' }}>{hoveredPoint.type.toUpperCase()}</span></div>
+            </Box>
+          )}
+        </Box>
+        <Box display="grid" gridTemplateColumns="repeat(4,1fr)" gap={2} mt={2}>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Best Bid</Typography>
+            <Typography variant="body2" color="success.main">{bestBid.toFixed(6)} {priceCurrency}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Best Ask</Typography>
+            <Typography variant="body2" color="error.main">{bestAsk.toFixed(6)} {priceCurrency}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Spread</Typography>
+            <Typography variant="body2">{spread.toFixed(6)} {priceCurrency}</Typography>
+          </Box>
+          <Box>
+            <Typography variant="caption" color="text.secondary">Mid Price</Typography>
+            <Typography variant="body2" color="info.main">{midPrice.toFixed(6)} {priceCurrency}</Typography>
+          </Box>
+        </Box>
+        <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={2}>
+          Hover over the chart to see detailed price and volume information
+        </Typography>
+    </SectionCard>
   );
 };
 

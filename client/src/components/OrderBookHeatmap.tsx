@@ -1,4 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { ToggleButton, ToggleButtonGroup, Typography, Box, Skeleton } from '@mui/material';
+import { chartCanvasSx, overlayFullSx } from '../styles/sx';
+import SectionCard from './common/SectionCard';
 
 interface OrderBookEntry {
   price: string;
@@ -436,16 +439,9 @@ const OrderBookHeatmap: React.FC<OrderBookHeatmapProps> = ({ selectedPair }) => 
 
   if (isLoading || !heatmapData.priceLevels.length) {
     return (
-      <div className="chart-container">
-        <div className="flex items-center space-x-2 mb-4">
-          <span className="text-blue-400">🔥</span>
-          <h3 className="text-xl font-semibold text-white">Order Book Heatmap</h3>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
-        </div>
-        <div className="flex items-center justify-center h-96">
-          <div className="text-slate-400">Loading heatmap...</div>
-        </div>
-      </div>
+      <SectionCard title="Order Book Heatmap" subheader={`(${selectedPair})`}>
+        <Skeleton variant="rectangular" height={384} />
+      </SectionCard>
     );
   }
 
@@ -454,157 +450,58 @@ const OrderBookHeatmap: React.FC<OrderBookHeatmapProps> = ({ selectedPair }) => 
   const totalOrders = heatmapData.priceLevels.reduce((sum, level) => sum + level.bidCount + level.askCount, 0);
 
   return (
-    <div className="chart-container">
-      {/* Header */}
-      <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center space-x-2">
-          <span className="text-blue-400">🔥</span>
-          <h3 className="text-xl font-semibold text-white">Order Book Heatmap</h3>
-          <span className="text-sm text-slate-400">({selectedPair})</span>
-        </div>
-
-        {/* Controls */}
-        <div className="flex items-center space-x-4">
-          {/* View Mode Toggle */}
-          <div className="flex" style={{ background: 'rgba(30, 41, 59, 0.8)', borderRadius: '8px', padding: '4px', border: '1px solid rgba(71, 85, 105, 0.3)' }}>
-            <button
-              onClick={() => setViewMode('volume')}
-              className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                viewMode === 'volume' 
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm border border-blue-500' 
-                  : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-              }`}
-            >
-              Volume
-            </button>
-            <button
-              onClick={() => setViewMode('count')}
-              className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                viewMode === 'count' 
-                  ? 'bg-gradient-to-r from-purple-600 to-purple-700 text-white shadow-sm border border-purple-500' 
-                  : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-              }`}
-            >
-              Count
-            </button>
-            <button
-              onClick={() => setViewMode('heatmap')}
-              className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                viewMode === 'heatmap' 
-                  ? 'bg-gradient-to-r from-orange-600 to-orange-700 text-white shadow-sm border border-orange-500' 
-                  : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-              }`}
-            >
-              Heatmap
-            </button>
-          </div>
-
-          {/* Price Range Filter */}
-          <div className="flex" style={{ background: 'rgba(30, 41, 59, 0.8)', borderRadius: '8px', padding: '4px', border: '1px solid rgba(71, 85, 105, 0.3)' }}>
-            <button
-              onClick={() => setPriceRange('all')}
-              disabled={isProcessing}
-              className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                priceRange === 'all' 
-                  ? 'bg-gradient-to-r from-green-600 to-green-700 text-white shadow-sm border border-green-500' 
-                  : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              All
-            </button>
-            <button
-              onClick={() => setPriceRange('normal')}
-              disabled={isProcessing}
-              className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                priceRange === 'normal' 
-                  ? 'bg-gradient-to-r from-blue-600 to-blue-700 text-white shadow-sm border border-blue-500' 
-                  : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              Normal
-            </button>
-            <button
-              onClick={() => setPriceRange('extreme')}
-              disabled={isProcessing}
-              className={`px-3 py-1 rounded text-xs font-medium transition-all duration-200 ${
-                priceRange === 'extreme' 
-                  ? 'bg-gradient-to-r from-red-600 to-red-700 text-white shadow-sm border border-red-500' 
-                  : 'text-slate-500 hover:text-white hover:bg-slate-700/50 border border-transparent bg-slate-900/40'
-              } ${isProcessing ? 'opacity-50 cursor-not-allowed' : ''}`}
-            >
-              {isProcessing ? 'Processing...' : 'Extreme'}
-            </button>
-          </div>
-        </div>
-      </div>
-
-      {/* Chart Container */}
-      <div className="relative">
-        <canvas
-          ref={canvasRef}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
-          style={{
-            width: '100%',
-            height: '400px',
-            cursor: 'crosshair',
-            borderRadius: '8px',
-            background: 'rgba(15, 23, 42, 0.3)'
-          }}
-        />
-        {isProcessing && (
-          <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg">
-            <div className="text-white text-center">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-400 mx-auto mb-2"></div>
-              <div className="text-sm">Processing extreme orders...</div>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-5 gap-4 mt-6 pt-4 border-t border-slate-700/50">
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Current Price</div>
-          <div className="text-lg font-bold text-blue-400">
-            {heatmapData.currentPrice.toFixed(6)} {priceCurrency}
-          </div>
-        </div>
-
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Total Bid Volume</div>
-          <div className="text-lg font-bold text-green-400">
-            {totalBidVolume.toLocaleString()} {volumeCurrency}
-          </div>
-        </div>
-        
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Total Ask Volume</div>
-          <div className="text-lg font-bold text-red-400">
-            {totalAskVolume.toLocaleString()} {volumeCurrency}
-          </div>
-        </div>
-
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Total Orders</div>
-          <div className="text-lg font-bold text-purple-400">
-            {totalOrders.toLocaleString()}
-          </div>
-        </div>
-
-        <div className="text-center">
-          <div className="text-xs text-slate-400 mb-1">Price Levels</div>
-          <div className="text-lg font-bold text-orange-400">
-            {heatmapData.priceLevels.length}
-          </div>
-        </div>
-      </div>
-
-      {/* Instructions */}
-      <div className="mt-4 text-xs text-slate-500 text-center">
-        Hover over bars to see detailed volume and order information • {viewMode === 'volume' ? 'Shows volume distribution' : viewMode === 'count' ? 'Shows order count distribution' : 'Shows volume heatmap'} • {priceRange === 'all' ? 'Showing all price levels' : priceRange === 'normal' ? 'Showing normal price range (±50%)' : 'Showing extreme orders only (>50% from current price)'}
-      </div>
-    </div>
+    <SectionCard
+      title="Order Book Heatmap"
+      subheader={`(${selectedPair})`}
+      action={
+        <Box display="flex" gap={2}>
+          <ToggleButtonGroup size="small" exclusive value={viewMode} onChange={(_, v) => v && setViewMode(v)}>
+            <ToggleButton value="volume">Volume</ToggleButton>
+            <ToggleButton value="count">Count</ToggleButton>
+            <ToggleButton value="heatmap">Heatmap</ToggleButton>
+          </ToggleButtonGroup>
+          <ToggleButtonGroup size="small" exclusive value={priceRange} onChange={(_, v) => v && setPriceRange(v)} disabled={isProcessing}>
+            <ToggleButton value="all">All</ToggleButton>
+            <ToggleButton value="normal">Normal</ToggleButton>
+            <ToggleButton value="extreme">{isProcessing ? 'Processing…' : 'Extreme'}</ToggleButton>
+          </ToggleButtonGroup>
+        </Box>
+      }
+    >
+        <Box position="relative">
+          <Box component="canvas" ref={canvasRef as any} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave} sx={chartCanvasSx} />
+          {isProcessing && (
+            <Box sx={{ ...overlayFullSx, background: 'rgba(0,0,0,0.5)', borderRadius: 2 }}>
+              <Typography variant="body2">Processing extreme orders...</Typography>
+            </Box>
+          )}
+        </Box>
+        <Box display="grid" gridTemplateColumns="repeat(5,1fr)" gap={2} mt={3} pt={2} sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
+          <Box textAlign="center">
+            <Typography variant="caption" color="text.secondary">Current Price</Typography>
+            <Typography variant="body1" color="info.main">{heatmapData.currentPrice.toFixed(6)} {priceCurrency}</Typography>
+          </Box>
+          <Box textAlign="center">
+            <Typography variant="caption" color="text.secondary">Total Bid Volume</Typography>
+            <Typography variant="body1" color="success.main">{totalBidVolume.toLocaleString()} {volumeCurrency}</Typography>
+          </Box>
+          <Box textAlign="center">
+            <Typography variant="caption" color="text.secondary">Total Ask Volume</Typography>
+            <Typography variant="body1" color="error.main">{totalAskVolume.toLocaleString()} {volumeCurrency}</Typography>
+          </Box>
+          <Box textAlign="center">
+            <Typography variant="caption" color="text.secondary">Total Orders</Typography>
+            <Typography variant="body1" color="secondary.main">{totalOrders.toLocaleString()}</Typography>
+          </Box>
+          <Box textAlign="center">
+            <Typography variant="caption" color="text.secondary">Price Levels</Typography>
+            <Typography variant="body1" color="warning.main">{heatmapData.priceLevels.length}</Typography>
+          </Box>
+        </Box>
+        <Typography variant="caption" color="text.secondary" display="block" textAlign="center" mt={2}>
+          Hover over bars to see detailed info • {viewMode === 'volume' ? 'Volume' : viewMode === 'count' ? 'Order count' : 'Heatmap'} • {priceRange === 'all' ? 'All levels' : priceRange === 'normal' ? 'Normal (±50%)' : 'Extreme (>50%)'}
+        </Typography>
+    </SectionCard>
   );
 };
 

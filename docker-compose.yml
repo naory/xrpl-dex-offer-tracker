@@ -1,4 +1,15 @@
 services:
+  # rippled:
+  #   image: xrpllabsofficial/xrpld:latest
+  #   platform: linux/amd64
+  #   container_name: rippled
+  #   ports:
+  #     - "5005:5005" # RPC
+  #     - "6006:6006" # WebSocket
+  #   volumes:
+  #     - ./rippled:/config/
+  #     - rippled_data:/var/lib/rippled
+
   postgres_test:
     image: postgres:13
     container_name: postgres_test
@@ -26,6 +37,7 @@ services:
       - NODE_ENV=development
     depends_on:
       - postgres_test
+      # - rippled
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:3001/offers"]
@@ -35,4 +47,5 @@ services:
       start_period: 40s
 
 volumes:
-  postgres_test_data: 
+  postgres_test_data:
+  # rippled_data: 

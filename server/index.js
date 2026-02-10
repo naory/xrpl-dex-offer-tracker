@@ -11,15 +11,27 @@ const TradingPairsTracker = require('./tradingPairsTracker');
 // Example: USD issuer on XRPL testnet
 const USD_ISSUER = 'rhub8VRN55s94qWKDv6jmDy1pUykJzF3wq'
 const REFRESH_CURRENCIES_INTERVAL = parseInt(process.env.REFRESH_CURRENCIES_INTERVAL, 10) || 60
-const XRPL_NET = process.env.XRPL_NET || 'testnet';
-const XRPL_WS_URL = XRPL_NET === 'mainnet'
-  ? 'wss://s1.ripple.com/'
-  : 'wss://s.altnet.rippletest.net:51233';
+const XRPL_NET = process.env.XRPL_NET || 'mainnet';
 
-// XRPL HTTP API endpoint (public server)
-const XRPL_HTTP_URL = XRPL_NET === 'mainnet'
-  ? 'https://s1.ripple.com:51234/'
-  : 'https://s.altnet.rippletest.net:51234/';
+let XRPL_WS_URL;
+let XRPL_HTTP_URL;
+
+if (XRPL_NET.startsWith('ws://') || XRPL_NET.startsWith('wss://')) {
+  XRPL_WS_URL = XRPL_NET;
+  // When using a local rippled, the RPC port is typically different from the WS port.
+  // In our docker-compose, rippled WS is on 6006 and RPC is on 5005.
+  XRPL_HTTP_URL = XRPL_NET.replace(/^ws/, 'http').replace(':6006', ':5005');
+  console.log(`Connecting to local rippled instance: WS at ${XRPL_WS_URL}, HTTP at ${XRPL_HTTP_URL}`);
+} else {
+  // Fallback to original logic for 'mainnet' or 'testnet' public servers
+  XRPL_WS_URL = XRPL_NET === 'mainnet'
+    ? 'wss://s1.ripple.com/'
+    : 'wss://s.altnet.rippletest.net:51233';
+  XRPL_HTTP_URL = XRPL_NET === 'mainnet'
+    ? 'https://s1.ripple.com:51234/'
+    : 'https://s.altnet.rippletest.net:51234/';
+  console.log(`Connecting to public XRPL server: ${XRPL_NET}`);
+}
 
 let backfillInProgress = true;
 
@@ -56,81 +68,132 @@ function pairsKey(pair) {
 }
 
 async function subscribeToOrderBook(client, taker_gets, taker_pays) {
-  const request = {
+  // Convert currency codes for XRPL subscription
+  // XRPL API only accepts 3-char ISO codes in text format; anything else must stay as 40-char hex
+  const convertForSubscription = (obj) => {
+    if (obj.currency === 'XRP') return obj;
+    const iso = hexToIsoCurrency(obj.currency);
+    return {
+      ...obj,
+      currency: iso.length === 3 ? iso : obj.currency
+    };
+  };
+
+  const subscriptionRequest = {
     command: 'subscribe',
     books: [
       {
-        taker_gets,
-        taker_pays,
+        taker_gets: convertForSubscription(taker_gets),
+        taker_pays: convertForSubscription(taker_pays),
         snapshot: true,
         both: true
       }
     ]
-  }
-  const response = await client.request(request)
-  console.log('Subscribed to order book:', {taker_gets, taker_pays}, response)
-  if (response.result && (response.result.bids || response.result.asks)) {
-    console.log('Initial order book snapshot:')
-    if (response.result.bids) {
-      response.result.bids.forEach((bid, i) => {
-        console.log(`[BID ${i+1}]`, bid)
-      })
-    }
-    if (response.result.asks) {
-      response.result.asks.forEach((ask, i) => {
-        console.log(`[ASK ${i+1}]`, ask)
-      })
-    }
-  }
+  };
+
+  const response = await client.request(subscriptionRequest);
+  const bidCount = response.result?.bids?.length || 0;
+  const askCount = response.result?.asks?.length || 0;
+  console.log(`[XRPL] Subscribed to order book: ${JSON.stringify({taker_gets, taker_pays})} (${bidCount} bids, ${askCount} asks)`);
+}
+
+async function subscribeToTransactions(client) {
+  const transactionSubscriptionRequest = {
+    command: 'subscribe',
+    streams: ['transactions_proposed', 'transactions']
+  };
+
+  await client.request(transactionSubscriptionRequest);
+  console.log('[XRPL] Subscribed to transaction streams');
 }
 
 async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = null) {
-  try {
-    console.log('[DEBUG] handleTransaction called with tx:', JSON.stringify(tx, (k, v) => (typeof v === 'object' && v !== null ? v : v), 2).slice(0, 2000));
-  } catch (err) {
-    console.error('[ERROR] Could not stringify tx:', err);
-  }
-  if (!tx || (!tx.transaction && !tx.tx_json) || !tx.meta) return
+  // Update last transaction time
+  lastTransactionTime = Date.now();
+  if (!tx || (!tx.transaction && !tx.tx_json)) return
   const txn = tx.transaction || tx.tx_json
   const { TransactionType, Account, Sequence, TakerGets, TakerPays, Flags, Expiration, hash } = txn
   const offerId = hash
   const eventTime = new Date()
 
+  // Main transaction processing path - handle all offer transactions (including proposed ones without meta)
+  if ((TransactionType === 'OfferCreate' || TransactionType === 'OfferCancel' || TransactionType === 'OfferModify') && TakerGets != null && TakerPays != null) {
+    // Parse offer fields for main transaction
+    let taker_gets_currency, taker_gets_issuer, taker_gets_value
+    let taker_pays_currency, taker_pays_issuer, taker_pays_value
+
+    if (typeof TakerGets === 'object') {
+      taker_gets_currency = hexToIsoCurrency(TakerGets.currency)
+      taker_gets_issuer = TakerGets.issuer || null
+      taker_gets_value = TakerGets.value
+    } else {
+      taker_gets_currency = 'XRP'
+      taker_gets_issuer = null
+      taker_gets_value = xrpl.dropsToXrp(TakerGets)
+    }
+    
+    if (typeof TakerPays === 'object') {
+      taker_pays_currency = hexToIsoCurrency(TakerPays.currency)
+      taker_pays_issuer = TakerPays.issuer || null
+      taker_pays_value = TakerPays.value
+    } else {
+      taker_pays_currency = 'XRP'
+      taker_pays_issuer = null
+      taker_pays_value = xrpl.dropsToXrp(TakerPays)
+    }
+    
+    // Record trading activity for all offer events (including proposed transactions)
+    if (tradingPairsTracker) {
+      try {
+        const takerGets = {
+          currency: taker_gets_currency,
+          issuer: taker_gets_issuer,
+          value: taker_gets_value
+        };
+        const takerPays = {
+          currency: taker_pays_currency,
+          issuer: taker_pays_issuer,
+          value: taker_pays_value
+        };
+        
+        // Use a small volume for offer activity (not actual fills)
+        const activityVolume = TransactionType === 'OfferCreate' ? 0.001 : 0.0001;
+        tradingPairsTracker.recordTrade(takerGets, takerPays, activityVolume, eventTime.getTime());
+      } catch (err) {
+        console.error('[ERROR] Failed to record trading activity:', err.message);
+      }
+    }
+  }
+
+  // Meta node processing - only for validated transactions with meta data
+  if (!tx.meta) return
+
   // Process all offers in meta.AffectedNodes
   if (tx.meta && Array.isArray(tx.meta.AffectedNodes)) {
-    console.log('[DEBUG] Entering meta node loop');
     for (const node of tx.meta.AffectedNodes) {
       try {
-        console.log('[DEBUG] Processing meta node:', JSON.stringify(node));
         let offerNode = null
         let eventType = ''
         let offer_id = null
         let previousFields = null // Track previous state for volume calculation
-        
+
         if (node.CreatedNode && node.CreatedNode.LedgerEntryType === 'Offer') {
-          console.log('[DEBUG] Matched CreatedNode Offer');
           offerNode = node.CreatedNode.NewFields
           eventType = 'created'
           offer_id = node.CreatedNode.LedgerIndex
         } else if (node.ModifiedNode && node.ModifiedNode.LedgerEntryType === 'Offer') {
-          console.log('[DEBUG] Matched ModifiedNode Offer');
           offerNode = node.ModifiedNode.FinalFields
           previousFields = node.ModifiedNode.PreviousFields
           eventType = 'modified'
           offer_id = node.ModifiedNode.LedgerIndex
         } else if (node.DeletedNode && node.DeletedNode.LedgerEntryType === 'Offer') {
-          console.log('[DEBUG] Matched DeletedNode Offer');
           offerNode = node.DeletedNode.FinalFields || node.DeletedNode.PreviousFields
           eventType = 'cancelled'
           offer_id = node.DeletedNode.LedgerIndex
-        // Also handle nodes where the node itself is an Offer (not wrapped)
         } else if (node.LedgerEntryType === 'Offer') {
-          console.log('[DEBUG] Matched Direct Offer Node');
           offerNode = node;
           eventType = 'unknown';
           offer_id = node.LedgerIndex;
-        } else {
-          console.log('[DEBUG] No match for node:', JSON.stringify(node));
         }
         
         if (offerNode && offer_id) {
@@ -160,7 +223,7 @@ async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = n
           }
           
           const flags = offerNode.Flags || null
-          const expiration = offerNode.Expiration || null
+          const expiration = offerNode.Expiration ? rippleEpochToDate(offerNode.Expiration) : null
           
           // Record trade for FILLED/CONSUMED offers (modified or deleted due to trading)
           if ((eventType === 'modified' || eventType === 'cancelled') && 
@@ -223,8 +286,7 @@ async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = n
                   issuer: taker_pays_issuer,
                   value: taker_pays_value
                 };
-                
-                console.log(`[TRADE_FILL] Recording ${filledXRPVolume} XRP volume for ${taker_gets_currency}/${taker_pays_currency}`);
+
                 tradingPairsTracker.recordTrade(takerGets, takerPays, filledXRPVolume, eventTime.getTime());
               }
             } catch (err) {
@@ -232,124 +294,74 @@ async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = n
             }
           }
           
-          // Insert into offer_history
-          console.log(`[${new Date().toISOString()}][${eventType.toUpperCase()}][META] Offer ${offer_id} by ${account}: ${taker_gets_value} ${taker_gets_currency} for ${taker_pays_value} ${taker_pays_currency}`)
-          await pool.query(
-            `INSERT INTO offer_history (
-              offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-              taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, event_type, event_time
-            ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-            [
-              offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-              taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, eventType, eventTime
-            ]
-          )
-          
-          // Upsert into offers (for created/modified), delete for cancelled
-          if (eventType === 'created' || eventType === 'modified' || eventType === 'unknown') {
+          // Only write to DB for tracked pairs
+          if (isTrackedPair(taker_gets_currency, taker_gets_issuer, taker_pays_currency, taker_pays_issuer)) {
+            // Insert into offer_history
             await pool.query(
-              `INSERT INTO offers (
+              `INSERT INTO offer_history (
                 offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-                taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, updated_at
-              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-              ON CONFLICT (offer_id) DO UPDATE SET
-                account=EXCLUDED.account,
-                taker_gets_currency=EXCLUDED.taker_gets_currency,
-                taker_gets_issuer=EXCLUDED.taker_gets_issuer,
-                taker_gets_value=EXCLUDED.taker_gets_value,
-                taker_pays_currency=EXCLUDED.taker_pays_currency,
-                taker_pays_issuer=EXCLUDED.taker_pays_issuer,
-                taker_pays_value=EXCLUDED.taker_pays_value,
-                flags=EXCLUDED.flags,
-                expiration=EXCLUDED.expiration,
-                updated_at=NOW()
-            `,
+                taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, event_type, event_time
+              ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
               [
                 offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-                taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration
+                taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, eventType, eventTime
               ]
             )
-          } else if (eventType === 'cancelled') {
-            await pool.query('DELETE FROM offers WHERE offer_id = $1', [offer_id])
+
+            // Upsert into offers (for created/modified), delete for cancelled
+            if (eventType === 'created' || eventType === 'modified' || eventType === 'unknown') {
+              await pool.query(
+                `INSERT INTO offers (
+                  offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
+                  taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, updated_at
+                ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
+                ON CONFLICT (offer_id) DO UPDATE SET
+                  account=EXCLUDED.account,
+                  taker_gets_currency=EXCLUDED.taker_gets_currency,
+                  taker_gets_issuer=EXCLUDED.taker_gets_issuer,
+                  taker_gets_value=EXCLUDED.taker_gets_value,
+                  taker_pays_currency=EXCLUDED.taker_pays_currency,
+                  taker_pays_issuer=EXCLUDED.taker_pays_issuer,
+                  taker_pays_value=EXCLUDED.taker_pays_value,
+                  flags=EXCLUDED.flags,
+                  expiration=EXCLUDED.expiration,
+                  updated_at=NOW()
+              `,
+                [
+                  offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
+                  taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration
+                ]
+              )
+            } else if (eventType === 'cancelled') {
+              await pool.query('DELETE FROM offers WHERE offer_id = $1', [offer_id])
+            }
+          }
+          
+          // Record trading activity for all offer events (not just fills)
+          if (tradingPairsTracker) {
+            try {
+              const takerGets = {
+                currency: taker_gets_currency,
+                issuer: taker_gets_issuer,
+                value: taker_gets_value
+              };
+              const takerPays = {
+                currency: taker_pays_currency,
+                issuer: taker_pays_issuer,
+                value: taker_pays_value
+              };
+              
+              // Use a small volume for offer activity (not actual fills)
+              const activityVolume = eventType === 'created' ? 0.001 : 0.0001;
+              tradingPairsTracker.recordTrade(takerGets, takerPays, activityVolume, eventTime.getTime());
+            } catch (err) {
+              console.error('[ERROR] Failed to record trading activity:', err.message);
+            }
           }
         }
       } catch (e) {
         console.error('[ERROR] Failed to process offer from meta node:', e)
       }
-    }
-  }
-
-  // Only handle offer-related transactions
-  if (TransactionType === 'OfferCreate' || TransactionType === 'OfferCancel' || TransactionType === 'OfferModify') {
-    let eventType = ''
-    if (TransactionType === 'OfferCreate') eventType = 'created'
-    if (TransactionType === 'OfferCancel') eventType = 'cancelled'
-    if (TransactionType === 'OfferModify') eventType = 'modified'
-
-    // Parse offer fields
-    let taker_gets_currency, taker_gets_issuer, taker_gets_value
-    let taker_pays_currency, taker_pays_issuer, taker_pays_value
-    if (typeof TakerGets === 'object') {
-      taker_gets_currency = hexToIsoCurrency(TakerGets.currency)
-      taker_gets_issuer = TakerGets.issuer || null
-      taker_gets_value = TakerGets.value
-    } else {
-      taker_gets_currency = 'XRP'
-      taker_gets_issuer = null
-      taker_gets_value = xrpl.dropsToXrp(TakerGets)
-    }
-    if (typeof TakerPays === 'object') {
-      taker_pays_currency = hexToIsoCurrency(TakerPays.currency)
-      taker_pays_issuer = TakerPays.issuer || null
-      taker_pays_value = TakerPays.value
-    } else {
-      taker_pays_currency = 'XRP'
-      taker_pays_issuer = null
-      taker_pays_value = xrpl.dropsToXrp(TakerPays)
-    }
-
-    // Insert into offer_history
-    console.log(`[${new Date().toISOString()}][${eventType.toUpperCase()}] Offer ${offerId} by ${Account}: ${taker_gets_value} ${hexToIsoCurrency(taker_gets_currency)} for ${taker_pays_value} ${hexToIsoCurrency(taker_pays_currency)}`)
-    await pool.query(
-      `INSERT INTO offer_history (
-        offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-        taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, event_type, event_time
-      ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
-      [
-        offerId, Account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-        taker_pays_currency, taker_pays_issuer, taker_pays_value, Flags, Expiration, eventType, eventTime
-      ]
-    )
-    
-    // Note: Trade volume tracking now happens in the meta.AffectedNodes processing
-    // where we track actual offer fills/consumption, not just creation
-
-    // Upsert into offers (for created/modified), delete for cancelled
-    if (eventType === 'created' || eventType === 'modified') {
-      await pool.query(
-        `INSERT INTO offers (
-          offer_id, account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-          taker_pays_currency, taker_pays_issuer, taker_pays_value, flags, expiration, updated_at
-        ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,NOW())
-        ON CONFLICT (offer_id) DO UPDATE SET
-          account=EXCLUDED.account,
-          taker_gets_currency=EXCLUDED.taker_gets_currency,
-          taker_gets_issuer=EXCLUDED.taker_gets_issuer,
-          taker_gets_value=EXCLUDED.taker_gets_value,
-          taker_pays_currency=EXCLUDED.taker_pays_currency,
-          taker_pays_issuer=EXCLUDED.taker_pays_issuer,
-          taker_pays_value=EXCLUDED.taker_pays_value,
-          flags=EXCLUDED.flags,
-          expiration=EXCLUDED.expiration,
-          updated_at=NOW()
-      `,
-        [
-          offerId, Account, taker_gets_currency, taker_gets_issuer, taker_gets_value,
-          taker_pays_currency, taker_pays_issuer, taker_pays_value, Flags, Expiration
-        ]
-      )
-    } else if (eventType === 'cancelled') {
-      await pool.query('DELETE FROM offers WHERE offer_id = $1', [offerId])
     }
   }
 }
@@ -358,13 +370,6 @@ async function handleTransaction(tx, pool = defaultPool, tradingPairsTracker = n
  * Backfill offers for all tracked pairs using XRPL HTTP API (book_offers)
  */
 async function backfillOffersForTrackedPairs(pool, trackedPairs) {
-  // Log current database and schema
-  try {
-    const result = await pool.query('SELECT current_database(), current_schema()');
-    console.log('[BACKFILL][DEBUG] Using DB:', result.rows[0]);
-  } catch (err) {
-    console.error('[BACKFILL][DEBUG] Failed to get DB info:', err);
-  }
   console.log('[BACKFILL] Starting backfill for tracked pairs...');
   for (const pair of trackedPairs) {
     let marker = null;
@@ -392,13 +397,6 @@ async function backfillOffersForTrackedPairs(pool, trackedPairs) {
       console.log(`[BACKFILL] Pair ${JSON.stringify(pair)} page ${page}: ${data.result.offers.length} offers`);
       for (const offer of data.result.offers) {
         await upsertOfferForBackfill(pool, offer, pair);
-        // Log row count after each upsert
-        try {
-          const count = await pool.query('SELECT COUNT(*) FROM offers');
-          console.log(`[BACKFILL][DEBUG] Offers table row count: ${count.rows[0].count}`);
-        } catch (err) {
-          console.error('[BACKFILL][DEBUG] Failed to get offers row count:', err);
-        }
       }
       marker = data.result.marker;
       page++;
@@ -410,10 +408,20 @@ async function backfillOffersForTrackedPairs(pool, trackedPairs) {
 // Initialize trading pairs tracker
 const tradingPairsTracker = new TradingPairsTracker();
 
-// Log trading tracker events
-tradingPairsTracker.on('tradeRecorded', (data) => {
-  console.log(`[TRADING_TRACKER] Trade recorded: ${data.volume} volume for pair ${data.pairKey}`);
-});
+// Trading tracker is ready
+
+// Set of tracked currency pair keys for filtering DB writes (e.g., "XRP|null|RLUSD|rMxC...")
+let trackedPairCurrencyKeys = new Set();
+
+function buildTrackedCurrencyKey(getCurrency, getIssuer, paysCurrency, paysIssuer) {
+  return `${getCurrency}|${getIssuer || ''}|${paysCurrency}|${paysIssuer || ''}`;
+}
+
+function isTrackedPair(getCurrency, getIssuer, paysCurrency, paysIssuer) {
+  const key1 = buildTrackedCurrencyKey(getCurrency, getIssuer, paysCurrency, paysIssuer);
+  const key2 = buildTrackedCurrencyKey(paysCurrency, paysIssuer, getCurrency, getIssuer);
+  return trackedPairCurrencyKeys.has(key1) || trackedPairCurrencyKeys.has(key2);
+}
 
 // XRPL WebSocket variables
 let client = null;
@@ -422,17 +430,49 @@ let currentPairs = [];
 let subscribedKeys = new Set();
 let reconnectDelay = 1000;
 const maxDelay = 30000;
+let lastTransactionTime = null;
+let lastConnectionError = null;
 
 async function connectAndSubscribe() {
+  console.log('[XRPL] connectAndSubscribe: starting');
   client = new xrpl.Client(XRPL_WS_URL);
   try {
     await client.connect();
-    console.log('Connected to XRPL WebSocket (' + XRPL_NET + ")");
+    console.log('[XRPL] Connected to XRPL WebSocket (' + XRPL_NET + ")");
     
     // Initial load and subscribe
     currentPairs = await loadTrackedPairs(pool);
+    console.log(`[XRPL] Loaded ${currentPairs.length} tracked pairs`);
     subscribedKeys = new Set(currentPairs.map(pairsKey));
-    await subscribeToPairs(client, currentPairs);
+
+    // Build tracked pair keys using ISO-converted currencies for DB write filtering
+    trackedPairCurrencyKeys.clear();
+    for (const pair of currentPairs) {
+      const getCurrency = pair.taker_gets.currency === 'XRP' ? 'XRP' : hexToIsoCurrency(pair.taker_gets.currency);
+      const getIssuer = pair.taker_gets.issuer || '';
+      const paysCurrency = pair.taker_pays.currency === 'XRP' ? 'XRP' : hexToIsoCurrency(pair.taker_pays.currency);
+      const paysIssuer = pair.taker_pays.issuer || '';
+      trackedPairCurrencyKeys.add(buildTrackedCurrencyKey(getCurrency, getIssuer, paysCurrency, paysIssuer));
+    }
+    console.log(`[XRPL] Tracked pair keys for DB filtering:`, [...trackedPairCurrencyKeys]);
+    
+    // Try to subscribe to order books (but don't fail if this doesn't work)
+    try {
+      const orderBookSuccess = await subscribeToPairs(client, currentPairs);
+      console.log(`[XRPL] Order book subscription result: ${orderBookSuccess ? 'success' : 'partial failure'}`);
+    } catch (err) {
+      console.warn('[XRPL] Order book subscription failed, but continuing with transaction subscription:', err);
+    }
+    
+    // Always attempt to subscribe to transaction streams
+    console.log('[XRPL] Subscribing to transaction streams...');
+    try {
+      await subscribeToTransactions(client);
+      console.log('[XRPL] Successfully subscribed to transaction streams');
+    } catch (err) {
+      console.error('[XRPL] Failed to subscribe to transaction streams:', err);
+      throw err; // This is critical, so fail if it doesn't work
+    }
     
     client.on('transaction', (tx) => {
       const txHuman = convertCurrenciesToISO(tx);
@@ -442,9 +482,7 @@ async function connectAndSubscribe() {
       handleTransaction(tx, pool, tradingPairsTracker).catch(console.error);
     });
     
-    client.on('ledgerClosed', (ledger) => {
-      console.log('Ledger closed:', ledger.ledger_index);
-    });
+    client.on('ledgerClosed', () => {});
     
     client.on('disconnected', handleDisconnect);
     client.on('error', handleError);
@@ -457,19 +495,23 @@ async function connectAndSubscribe() {
     startExpressServer();
     
   } catch (err) {
-    console.error('XRPL connection error:', err);
+    console.error('[XRPL] XRPL connection error:', err);
     scheduleReconnect();
   }
 }
 
 async function subscribeToPairs(client, pairs) {
+  let successCount = 0;
   for (const pair of pairs) {
     try {
       await subscribeToOrderBook(client, pair.taker_gets, pair.taker_pays);
+      successCount++;
     } catch (err) {
       console.error('Error subscribing to pair:', pair, err);
     }
   }
+  console.log(`Successfully subscribed to ${successCount}/${pairs.length} order book pairs`);
+  return successCount > 0; // Return true if at least one subscription succeeded
 }
 
 async function refreshPairs() {
@@ -498,6 +540,7 @@ function handleDisconnect() {
 
 function handleError(err) {
   console.error('XRPL WebSocket error:', err);
+  lastConnectionError = err.message || err.toString();
   scheduleReconnect();
 }
 
@@ -519,6 +562,8 @@ function startExpressServer() {
   // Expose XRPL client and status to the Express app for health checks
   app.locals.xrplClient = client;
   app.locals.backfillInProgress = backfillInProgress;
+  app.locals.lastTransactionTime = lastTransactionTime;
+  app.locals.lastConnectionError = lastConnectionError;
   
   const port = process.env.PORT || 3001;
   server = app.listen(port, () => {
@@ -546,23 +591,82 @@ function startExpressServer() {
     }
   });
 
-  // Update backfill status in app locals when it changes
+  // Update backfill status, last transaction time, and last connection error in app locals when they change
   setInterval(() => {
     if (app.locals.backfillInProgress !== backfillInProgress) {
       app.locals.backfillInProgress = backfillInProgress;
     }
+    if (app.locals.lastTransactionTime !== lastTransactionTime) {
+      app.locals.lastTransactionTime = lastTransactionTime;
+    }
+    if (app.locals.lastConnectionError !== lastConnectionError) {
+      app.locals.lastConnectionError = lastConnectionError;
+    }
   }, 1000);
+}
+
+// Populate trading pairs tracker with historical data from offers
+async function populateTradingPairsTracker(pool, tradingPairsTracker) {
+  try {
+    console.log('[TRADING_TRACKER] Populating with historical data from offers...');
+
+    const result = await pool.query(`
+      SELECT
+        taker_gets_currency, taker_gets_issuer, taker_gets_value,
+        taker_pays_currency, taker_pays_issuer, taker_pays_value,
+        updated_at
+      FROM offers
+      ORDER BY updated_at DESC
+      LIMIT 1000
+    `);
+
+    let populatedCount = 0;
+    for (const offer of result.rows) {
+      const takerGets = {
+        currency: offer.taker_gets_currency,
+        issuer: offer.taker_gets_issuer,
+        value: offer.taker_gets_value
+      };
+      const takerPays = {
+        currency: offer.taker_pays_currency,
+        issuer: offer.taker_pays_issuer,
+        value: offer.taker_pays_value
+      };
+
+      try {
+        tradingPairsTracker.recordTrade(takerGets, takerPays, 0.001, new Date(offer.updated_at).getTime());
+        populatedCount++;
+      } catch (recordError) {
+        // Skip individual failures silently
+      }
+    }
+
+    console.log(`[TRADING_TRACKER] Populated ${populatedCount}/${result.rows.length} historical offers`);
+  } catch (error) {
+    console.error('[ERROR] Failed to populate trading pairs tracker:', error.message);
+  }
 }
 
 // Only start the server if this is the main module (not being imported for testing)
 if (require.main === module) {
   // Refactored: run backfill, then start websocket and server
   (async () => {
+    console.log('[STARTUP] Starting server initialization...');
     const trackedPairs = await loadTrackedPairs(pool);
+    console.log('[STARTUP] Loaded tracked pairs:', trackedPairs.length);
     backfillInProgress = true;
+    console.log('[STARTUP] Starting backfill...');
     await backfillOffersForTrackedPairs(pool, trackedPairs);
     backfillInProgress = false;
+    console.log('[STARTUP] Backfill completed, starting population...');
+    
+    // Populate trading pairs tracker with historical data
+    // Temporarily disabled due to currency conversion issues
+    // await populateTradingPairsTracker(pool, tradingPairsTracker);
+    console.log('[STARTUP] Population skipped, starting WebSocket connection...');
+    
     await connectAndSubscribe();
+    console.log('[STARTUP] Server initialization complete');
   })();
 } else {
   // For testing: create app without WebSocket connection
@@ -646,9 +750,6 @@ async function upsertOfferForBackfill(pool, offer, pair) {
   }
   // Expiration
   const expiration = offer.Expiration ? rippleEpochToDate(offer.Expiration) : null;
-  // Log to console (stdout)
-  console.log(`[${new Date().toISOString()}][CREATED][BACKFILL] Offer ${offer.index} by ${offer.Account}: ${taker_gets_value} ${taker_gets_currency} for ${taker_pays_value} ${taker_pays_currency}`);
-  // Upsert with debug
   try {
     await pool.query(`
       INSERT INTO offers (
@@ -678,8 +779,7 @@ async function upsertOfferForBackfill(pool, offer, pair) {
       offer.Flags,
       expiration
     ]);
-    console.log(`[BACKFILL][UPSERT SUCCESS] Offer ${offer.index}`);
   } catch (err) {
-    console.error(`[BACKFILL][UPSERT FAIL] Offer ${offer.index}:`, err);
+    console.error(`[BACKFILL] Failed to upsert offer ${offer.index}:`, err.message);
   }
 } 

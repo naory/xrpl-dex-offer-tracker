@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useQuery } from '@tanstack/react-query';
-import { TrendingUp, TrendingDown, BarChart3, Activity } from 'lucide-react';
+import { Activity } from 'lucide-react';
+import SectionCard from './common/SectionCard';
+import { ToggleButtonGroup, ToggleButton, Typography, Box, Skeleton } from '@mui/material';
 
 interface TradingPair {
   pairKey: string;
@@ -23,7 +25,7 @@ interface TradingPair {
   askVolume: number;
   bidCount: number;
   askCount: number;
-  lastPrice: number;
+  lastPrice: number | null;
   priceHistory: Array<{
     price: number;
     timestamp: number;
@@ -67,6 +69,13 @@ const TopTradingPairs: React.FC = () => {
     return `${base}/${quote}`;
   };
 
+  const formatMaybeNumber = (value: unknown, digits = 2, fallback = '--') => {
+    if (typeof value === 'number' && Number.isFinite(value)) {
+      return value.toFixed(digits);
+    }
+    return fallback;
+  };
+
   const calculatePriceChange = (priceHistory: Array<{ price: number; timestamp: number }>) => {
     if (priceHistory.length < 2) return { change: 0, percentage: 0 };
     
@@ -96,214 +105,101 @@ const TopTradingPairs: React.FC = () => {
 
   if (isLoading) {
     return (
-      <div className="trading-pairs-container">
-        <div className="trading-pairs-header">
-          <div className="trading-pairs-title">
-            <BarChart3 style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
-            <h3>Top Trading Pairs</h3>
-          </div>
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          {[...Array(10)].map((_, i) => (
-            <div key={i} className="loading-shimmer" style={{ height: '64px', borderRadius: '8px' }}></div>
-          ))}
-        </div>
-      </div>
+      <SectionCard title="Top Trading Pairs">
+        {[...Array(10)].map((_, i) => (
+          <Skeleton key={i} variant="rectangular" height={64} sx={{ mb: 1 }} />
+        ))}
+      </SectionCard>
     );
   }
 
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.6 }}
-      className="trading-pairs-container"
-    >
-      {/* Header */}
-      <div className="trading-pairs-header">
-        <div className="trading-pairs-title">
-          <BarChart3 style={{ width: '20px', height: '20px', color: '#60a5fa' }} />
-          <h3>Top Trading Pairs</h3>
-          <span>
-            ({topPairs?.pairs?.length || 0} pairs, {selectedWindow})
-          </span>
-        </div>
-
-        {/* Controls */}
-        <div className="trading-pairs-controls">
-          {/* Time Window Selector */}
-          <div className="btn-group">
-            {['10m', '1h', '24h'].map((window) => (
-              <button
-                key={window}
-                onClick={() => setSelectedWindow(window as any)}
-                className={`btn-toggle ${selectedWindow === window ? 'active' : ''}`}
-              >
-                {window}
-              </button>
-            ))}
-          </div>
-
-          {/* Count Selector */}
-          <div className="btn-group">
-            {[10, 20, 50].map((count) => (
-              <button
-                key={count}
-                onClick={() => setShowCount(count)}
-                className={`btn-toggle ${showCount === count ? 'active purple' : ''}`}
-              >
-                {count}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Table */}
-      <div className="trading-pairs-table">
-        {/* Table Header */}
-        <div className="trading-pairs-table-header">
-          <div>Pair</div>
-          <div className="col-2">Price</div>
-          <div className="col-3">24h Change</div>
-          <div className="col-4">Volume</div>
-          <div className="col-5">Trades</div>
-          <div className="col-6">Bid/Ask</div>
-          <div className="col-7">Last Trade</div>
-        </div>
-
-        {/* Table Rows */}
-        <div className="trading-pairs-table-body">
+    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.6 }}>
+      <SectionCard
+        title="Top Trading Pairs"
+        subheader={`(${topPairs?.pairs?.length || 0} pairs, ${selectedWindow})`}
+        action={
+          <Box display="flex" gap={2}>
+            <ToggleButtonGroup size="small" exclusive value={selectedWindow} onChange={(_, v) => v && setSelectedWindow(v)}>
+              <ToggleButton value="10m">10m</ToggleButton>
+              <ToggleButton value="1h">1h</ToggleButton>
+              <ToggleButton value="24h">24h</ToggleButton>
+            </ToggleButtonGroup>
+            <ToggleButtonGroup size="small" exclusive value={showCount} onChange={(_, v) => v && setShowCount(v)}>
+              <ToggleButton value={10}>10</ToggleButton>
+              <ToggleButton value={20}>20</ToggleButton>
+              <ToggleButton value={50}>50</ToggleButton>
+            </ToggleButtonGroup>
+          </Box>
+        }
+      >
+          <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 2, fontSize: 12, fontWeight: 600, color: 'text.secondary', textTransform: 'uppercase', letterSpacing: 0.5, mb: 1 }}>
+            <Box>Pair</Box>
+            <Box textAlign="right">Price</Box>
+            <Box textAlign="right">24h Change</Box>
+            <Box textAlign="right">Volume</Box>
+            <Box textAlign="right">Trades</Box>
+            <Box textAlign="right">Bid/Ask</Box>
+            <Box textAlign="right">Last Trade</Box>
+          </Box>
           {topPairs?.pairs?.map((pair, index) => {
             const priceChange = calculatePriceChange(pair.priceHistory);
             const isPositive = priceChange.percentage >= 0;
             const bidAskRatio = pair.askVolume > 0 ? pair.bidVolume / pair.askVolume : 0;
-
             return (
-              <motion.div
-                key={pair.pairKey}
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.3, delay: index * 0.02 }}
-                className="trading-pair-row"
-              >
-                {/* Pair Name & Rank */}
-                <div className="trading-pair-name">
-                  <div style={{
-                    width: '24px',
-                    height: '24px',
-                    borderRadius: '50%',
-                    background: 'linear-gradient(45deg, #3b82f6, #9333ea)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    fontSize: '12px',
-                    fontWeight: 'bold',
-                    color: 'white',
-                    flexShrink: 0,
-                    marginRight: '12px'
-                  }}>
-                    {index + 1}
-                  </div>
-                  <div>
-                    <div style={{ fontWeight: '600', color: '#ffffff', fontSize: '14px' }}>
-                      {formatPairName(pair)}
-                    </div>
-                    {pair.isXRPPair && (
-                      <div style={{ fontSize: '12px', color: '#f59e0b' }}>XRP</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Price */}
-                <div className="trading-pair-cell price col-2">
-                  {pair.lastPrice.toFixed(6)}
-                </div>
-
-                {/* 24h Change */}
-                <div className={`trading-pair-cell col-3 ${isPositive ? 'bid' : 'ask'}`}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '4px' }}>
-                    {isPositive ? <TrendingUp style={{ width: '14px', height: '14px' }} /> : <TrendingDown style={{ width: '14px', height: '14px' }} />}
-                    <span>{isPositive ? '+' : ''}{priceChange.percentage.toFixed(2)}%</span>
-                  </div>
-                </div>
-
-                {/* Volume */}
-                <div className="trading-pair-cell volume col-4">
-                  <div>{formatVolume(pair.volume)}</div>
-                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>
-                    {pair.takerGets.currency}
-                  </div>
-                </div>
-
-                {/* Trades */}
-                <div className="trading-pair-cell count col-5">
-                  <div>{pair.count}</div>
-                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>
-                    {pair.bidCount}B/{pair.askCount}A
-                  </div>
-                </div>
-
-                {/* Bid/Ask */}
-                <div className="trading-pair-cell col-6">
-                  <div style={{ fontSize: '14px', marginBottom: '2px' }}>
-                    <span className="trading-pair-cell bid">{formatVolume(pair.bidVolume)}</span>
-                    {' / '}
-                    <span className="trading-pair-cell ask">{formatVolume(pair.askVolume)}</span>
-                  </div>
-                  <div style={{ color: '#94a3b8', fontSize: '12px' }}>
-                    {bidAskRatio.toFixed(2)}
-                  </div>
-                </div>
-
-                {/* Last Trade */}
-                <div className="trading-pair-cell col-7">
-                  <div style={{ color: '#e2e8f0', fontSize: '14px', marginBottom: '2px' }}>
-                    {formatTime(pair.lastUpdate)}
-                  </div>
-                  <div style={{ 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'flex-end', 
-                    gap: '4px', 
-                    color: '#94a3b8', 
-                    fontSize: '12px' 
-                  }}>
-                    <Activity style={{ width: '12px', height: '12px' }} />
-                    <span>Live</span>
-                  </div>
-                </div>
-              </motion.div>
+            <Box key={pair.pairKey} sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr 1fr 1fr', gap: 2, alignItems: 'center', py: 1.2, borderBottom: '1px solid', borderColor: 'divider' }}>
+                <Box display="flex" alignItems="center" gap={1.5}>
+                  <Box sx={{ width: 24, height: 24, borderRadius: '50%', background: 'linear-gradient(45deg, #3b82f6, #9333ea)', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, fontWeight: 700 }}>{index + 1}</Box>
+                  <Box>
+                    <Typography variant="body2" fontWeight={600}>{formatPairName(pair)}</Typography>
+                    {pair.isXRPPair && <Typography variant="caption" color="warning.main">XRP</Typography>}
+                  </Box>
+                </Box>
+              <Typography variant="body2" textAlign="right">{formatMaybeNumber(pair.lastPrice, 6)}</Typography>
+                <Typography variant="body2" textAlign="right" color={isPositive ? 'success.main' : 'error.main'}>
+                  {isPositive ? '+' : ''}{formatMaybeNumber(priceChange.percentage, 2, '--')}%
+                </Typography>
+                <Box textAlign="right">
+                <Typography variant="body2">{formatVolume(Number.isFinite(pair.volume) ? pair.volume : 0)}</Typography>
+                  <Typography variant="caption" color="text.secondary">{pair.takerGets.currency}</Typography>
+                </Box>
+                <Box textAlign="right">
+                  <Typography variant="body2">{pair.count}</Typography>
+                  <Typography variant="caption" color="text.secondary">{pair.bidCount}B/{pair.askCount}A</Typography>
+                </Box>
+                <Box textAlign="right">
+                <Typography variant="body2">{formatVolume(Number.isFinite(pair.bidVolume) ? pair.bidVolume : 0)} / {formatVolume(Number.isFinite(pair.askVolume) ? pair.askVolume : 0)}</Typography>
+                  <Typography variant="caption" color="text.secondary">{bidAskRatio.toFixed(2)}</Typography>
+                </Box>
+                <Box textAlign="right">
+                  <Typography variant="body2">{formatTime(pair.lastUpdate)}</Typography>
+                  <Box display="flex" alignItems="center" justifyContent="flex-end" gap={0.5} color="text.secondary">
+                    <Activity size={12} />
+                    <Typography variant="caption">Live</Typography>
+                  </Box>
+                </Box>
+              </Box>
             );
           })}
-        </div>
-      </div>
-
-      {/* Summary */}
-      <div className="stats-grid cols-4" style={{ marginTop: '24px', paddingTop: '16px', borderTop: '1px solid rgba(71, 85, 105, 0.5)' }}>
-        <div className="stat-item">
-          <div className="stat-label">Total Pairs</div>
-          <div className="stat-value">{topPairs?.pairs?.length || 0}</div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-label">XRP Pairs</div>
-          <div className="stat-value" style={{ color: '#f59e0b' }}>
-            {topPairs?.pairs?.filter(p => p.isXRPPair).length || 0}
-          </div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-label">Total Volume</div>
-          <div className="stat-value blue">
-            {formatVolume(topPairs?.pairs?.reduce((sum, pair) => sum + pair.volume, 0) || 0)}
-          </div>
-        </div>
-        <div className="stat-item">
-          <div className="stat-label">Active Trades</div>
-          <div className="stat-value">
-            {topPairs?.pairs?.reduce((sum, pair) => sum + pair.count, 0) || 0}
-          </div>
-        </div>
-      </div>
+          <Box display="grid" gridTemplateColumns="repeat(4,1fr)" gap={2} mt={3} pt={2} sx={{ borderTop: '1px solid', borderColor: 'divider' }}>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Total Pairs</Typography>
+              <Typography variant="body2">{topPairs?.pairs?.length || 0}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">XRP Pairs</Typography>
+              <Typography variant="body2" color="warning.main">{topPairs?.pairs?.filter(p => p.isXRPPair).length || 0}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Total Volume</Typography>
+              <Typography variant="body2" color="info.main">{formatVolume(topPairs?.pairs?.reduce((sum, pair) => sum + pair.volume, 0) || 0)}</Typography>
+            </Box>
+            <Box>
+              <Typography variant="caption" color="text.secondary">Active Trades</Typography>
+              <Typography variant="body2">{topPairs?.pairs?.reduce((sum, pair) => sum + pair.count, 0) || 0}</Typography>
+            </Box>
+          </Box>
+      </SectionCard>
     </motion.div>
   );
 };

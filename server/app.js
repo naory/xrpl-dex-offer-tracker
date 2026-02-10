@@ -399,6 +399,39 @@ function createApp(pool, tradingPairsTracker = null) {
     }
   })
 
+  // GET /tracked-pairs - get all tracked trading pairs from database
+  app.get('/tracked-pairs', async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT taker_gets_currency, taker_gets_issuer, taker_pays_currency, taker_pays_issuer, active
+         FROM tracked_pairs 
+         WHERE active = TRUE
+         ORDER BY taker_gets_currency, taker_pays_currency`
+      );
+      
+      const pairs = result.rows.map(row => ({
+        takerGets: {
+          currency: row.taker_gets_currency,
+          issuer: row.taker_gets_issuer
+        },
+        takerPays: {
+          currency: row.taker_pays_currency,
+          issuer: row.taker_pays_issuer
+        },
+        label: `${row.taker_gets_currency}/${row.taker_pays_currency}`,
+        value: `${row.taker_gets_currency}/${row.taker_pays_currency}`
+      }));
+      
+      res.json({
+        pairs,
+        count: pairs.length
+      });
+    } catch (error) {
+      console.error('[ERROR] Failed to fetch tracked pairs:', error);
+      res.status(500).json({ error: 'Failed to fetch tracked pairs' });
+    }
+  });
+
   // Trading Pairs Tracker API endpoints
   if (tradingPairsTracker) {
     // GET /top-trading-pairs - get top-k trading pairs for different time windows
@@ -583,7 +616,125 @@ function createApp(pool, tradingPairsTracker = null) {
         res.status(500).json({ error: 'Internal server error' });
       }
     });
+
   }
+
+  // GET /rippled-status - get XRPL connection status (works for both local and public connections)
+  app.get('/rippled-status', async (req, res) => {
+    try {
+      // Get current mainnet ledger for comparison
+      let mainnetLedger = null;
+      let mainnetError = null;
+      try {
+        const mainnetResponse = await fetch('https://s1.ripple.com:51234/', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ method: 'ledger_current' }),
+          timeout: 5000
+        });
+        const mainnetData = await mainnetResponse.json();
+        mainnetLedger = mainnetData.result?.ledger_current_index || null;
+      } catch (error) {
+        mainnetError = error.message;
+        console.warn('[WARN] Failed to fetch mainnet ledger:', error.message);
+      }
+
+      // Get our server's connection status
+      let connectionStatus = {
+        connected: false,
+        serverState: 'unknown',
+        validatedLedger: null,
+        peers: 0,
+        loadFactor: 1,
+        uptime: 0,
+        lastTransactionTime: null,
+        rateLimitStatus: 'unknown',
+        connectionType: 'public_mainnet',
+        error: null,
+        connectionIssue: null
+      };
+
+      // Check if we have a WebSocket connection
+      if (app.locals.xrplClient && app.locals.xrplClient.isConnected()) {
+        try {
+          const serverInfo = await app.locals.xrplClient.request({ command: 'server_info' });
+          const info = serverInfo.result?.info;
+          
+          if (info) {
+            connectionStatus = {
+              connected: true,
+              serverState: info.server_state || 'unknown',
+              validatedLedger: info.validated_ledger?.ledger_index || null,
+              peers: info.peers || 0,
+              loadFactor: info.load_factor || 1,
+              uptime: info.uptime || 0,
+              lastTransactionTime: app.locals.lastTransactionTime || null,
+              rateLimitStatus: info.load_factor > 1000 ? 'rate_limited' : 'normal',
+              connectionType: 'public_mainnet',
+              error: null,
+              connectionIssue: null
+            };
+          }
+        } catch (wsError) {
+          connectionStatus.error = `WebSocket error: ${wsError.message}`;
+          connectionStatus.connectionIssue = 'websocket_error';
+          console.warn('[WARN] WebSocket server_info failed:', wsError.message);
+        }
+      } else {
+        // Check if the connection failed due to rate limiting
+        // We can detect this by checking recent logs or connection attempts
+        const isRateLimited = app.locals.lastConnectionError && 
+                             app.locals.lastConnectionError.includes('429');
+        
+        if (isRateLimited) {
+          connectionStatus.error = 'Rate limited by XRPL server (429 Too Many Requests)';
+          connectionStatus.connectionIssue = 'rate_limited';
+          connectionStatus.rateLimitStatus = 'rate_limited';
+        } else {
+          connectionStatus.error = 'WebSocket not connected';
+          connectionStatus.connectionIssue = 'disconnected';
+        }
+      }
+
+      // Check for recent activity
+      const hasRecentActivity = connectionStatus.lastTransactionTime && 
+                               (Date.now() - connectionStatus.lastTransactionTime) < 60000; // 1 minute
+
+      res.json({
+        // Connection info
+        connected: connectionStatus.connected,
+        serverState: connectionStatus.serverState,
+        peers: connectionStatus.peers,
+        validatedLedger: connectionStatus.validatedLedger,
+        mainnetLedger: mainnetLedger,
+        
+        // Performance info
+        loadFactor: connectionStatus.loadFactor,
+        uptime: connectionStatus.uptime,
+        rateLimitStatus: connectionStatus.rateLimitStatus,
+        hasRecentActivity: hasRecentActivity,
+        
+        // Connection details
+        connectionType: connectionStatus.connectionType,
+        lastTransactionTime: connectionStatus.lastTransactionTime,
+        connectionIssue: connectionStatus.connectionIssue,
+        
+        // Errors
+        error: connectionStatus.error || mainnetError,
+        timestamp: Date.now()
+      });
+      
+    } catch (err) {
+      console.error('[ERROR] /rippled-status error:', err);
+      res.status(500).json({ 
+        error: 'Failed to get XRPL status',
+        details: err.message,
+        connected: false,
+        connectionIssue: 'server_error',
+        connectionType: 'public_mainnet'
+      });
+    }
+  });
 
   return app
 }
